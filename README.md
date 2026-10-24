@@ -7,6 +7,8 @@ going — and fixes what a terminal can't do: results you can select and copy as
 TSV, wide and long tables that stay readable, and a session history you can
 come back to.
 
+![A session: an earlier large result collapsed into a card, an aggregate query with its result, and an error with psql's position marker](docs/screenshots/overview.png)
+
 - **psql-compatible.** `\d`, `\dt+`, `\df`, `\l`, `\dn`, `\du`, `\dx`, `\sf`,
   `\sv`, `\x`, `\c`, `\conninfo`, `\copy`, `\i`, `\g`, `\gx`, `\gdesc` and more
   ([full list](#backslash-commands)), with psql's own catalog queries so the
@@ -34,6 +36,28 @@ come back to.
   (`sslrootcert`, client certificates, `sslrootcert=system`), Unix sockets,
   SCRAM-SHA-256 and MD5 authentication, multiple hosts.
 - **PostgreSQL only**, on purpose.
+
+## Screenshots
+
+**Select, copy, export.** Drag a rectangle, then `Ctrl+C` for TSV or right-click for other formats.
+
+![Result grid with a selected block of cells and the copy menu open](docs/screenshots/grid.png)
+
+**Completions that know the schema**, including aliases from the current statement.
+
+![Completion popup listing the columns of orders after typing "o."](docs/screenshots/completion.png)
+
+**psql's backslash commands**, with the same queries and footers.
+
+![\dt+ and \d orders output with indexes, constraints and references](docs/screenshots/describe.png)
+
+**Dark theme**, transaction state in the prompt and header, and `\gx` expanded records.
+
+![Dark theme: an open transaction, an expanded record and \d+ of a view](docs/screenshots/dark.png)
+
+**A new tab starts a new session**, or resumes any saved one.
+
+![New session page listing saved sessions to resume](docs/screenshots/sessions.png)
 
 ## Install
 

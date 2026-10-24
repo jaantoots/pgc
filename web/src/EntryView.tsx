@@ -402,7 +402,8 @@ function RecordView(props: { data: ResultData; onOpenCell: (r: number, c: number
     () => [props.data, limit()] as const,
     ([d, l]) => d.slice(0, Math.min(l, d.stored)),
   );
-  const nameW = () => Math.min(260, Math.max(...props.data.columns.map((c) => c.name.length)) * 7.5 + 16);
+  // Width in `ch` of the monospace font (plus padding), capped for very long names.
+  const nameW = () => Math.min(40, Math.max(...props.data.columns.map((c) => [...c.name].length))) + 3;
   return (
     <div class="records" style={{ 'max-height': `${Math.round(window.innerHeight * 0.6)}px` }}>
       <For each={rows() ?? []}>
@@ -421,7 +422,7 @@ function RecordView(props: { data: ResultData; onOpenCell: (r: number, c: number
             <For each={props.data.columns}>
               {(col, c) => (
                 <div class="record-row">
-                  <div class="record-key" style={{ width: `${nameW()}px` }} title={col.type_name}>
+                  <div class="record-key" style={{ width: `${nameW()}ch` }} title={col.type_name}>
                     {col.name}
                   </div>
                   <div class="record-val" classList={{ nul: row[c()] === null, num: col.numeric }} onDblClick={() => props.onOpenCell(r(), c())}>
