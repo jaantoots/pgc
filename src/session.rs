@@ -330,10 +330,16 @@ impl Actor {
             sh.conn = ConnState {
                 status: "connected".into(),
                 conninfo: conninfo::to_string(&self.params, false),
-                label: Some(if i.unix_socket {
-                    format!("{}@{}", i.user, i.dbname)
-                } else {
-                    format!("{}@{}:{}/{}", i.user, i.host, i.port, i.dbname)
+                label: Some({
+                    let target = if i.unix_socket {
+                        format!("{}@{}", i.user, i.dbname)
+                    } else {
+                        format!("{}@{}:{}/{}", i.user, i.host, i.port, i.dbname)
+                    };
+                    match self.params.get("service").filter(|s| !s.is_empty()) {
+                        Some(svc) => format!("{svc} · {target}"),
+                        None => target,
+                    }
                 }),
                 dbname: Some(i.dbname.clone()),
                 user: Some(i.user.clone()),
@@ -937,24 +943,20 @@ impl Actor {
     }
 
     async fn meta_connect(&mut self, entry: &mut Entry, argv: &[String]) -> Result<(), Error> {
-        let mut params = self.params.clone();
         let first = argv.first().map(String::as_str).unwrap_or("");
-        if argv.len() == 1 && (first.contains('=') || first.starts_with("postgres")) {
-            let p = conninfo::parse(first).map_err(|e| Error::Other(e.to_string()));
-            match p {
-                Ok(p) => {
-                    // A new conninfo replaces connection settings, keeping the
-                    // ones it doesn't mention (as psql does).
-                    for (k, v) in p {
-                        params.insert(k, v);
-                    }
-                }
+        let params = if argv.len() == 1 && (first.contains('=') || first.starts_with("postgres")) {
+            // Like psql, a connection string starts from scratch rather than
+            // reusing the previous connection's settings.
+            match conninfo::parse(first) {
+                Ok(p) => p,
                 Err(e) => {
+                    let e = Error::Other(e.to_string());
                     self.push_item(entry, error_item(&e, None));
                     return Err(e);
                 }
             }
         } else {
+            let mut params = self.params.clone();
             for (i, key) in ["dbname", "user", "host", "port"].iter().enumerate() {
                 match argv.get(i).map(String::as_str) {
                     None | Some("-") => {}
@@ -963,15 +965,15 @@ impl Actor {
                     }
                 }
             }
-        }
-        // Keep the resolved settings of the current connection for the parts
-        // not overridden.
-        if let Some(c) = &self.conn {
-            let i = &c.info;
-            params.entry("user".into()).or_insert(i.user.clone());
-            params.entry("host".into()).or_insert(i.host.clone());
-            params.entry("port".into()).or_insert(i.port.to_string());
-        }
+            // Reuse the current connection's resolved settings for the rest.
+            if let Some(c) = &self.conn {
+                let i = &c.info;
+                params.entry("user".into()).or_insert(i.user.clone());
+                params.entry("host".into()).or_insert(i.host.clone());
+                params.entry("port".into()).or_insert(i.port.to_string());
+            }
+            params
+        };
         let old_params = std::mem::replace(&mut self.params, params);
         let old_conn = self.conn.take();
         match self.connect().await {

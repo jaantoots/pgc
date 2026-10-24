@@ -1,5 +1,5 @@
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, completionStatus, startCompletion } from '@codemirror/autocomplete';
-import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from '@codemirror/commands';
+import { acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, completionStatus, startCompletion } from '@codemirror/autocomplete';
+import { defaultKeymap, history, historyKeymap, insertNewlineAndIndent } from '@codemirror/commands';
 import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
@@ -92,6 +92,11 @@ export function createEditor(o: EditorOptions): EditorView {
     },
     { key: 'Ctrl-Space', run: startCompletion },
     {
+      // Tab completes like in a shell: accept the selected suggestion, or open the list.
+      key: 'Tab',
+      run: (view) => (completionStatus(view.state) === 'active' ? acceptCompletion(view) : startCompletion(view)) || true,
+    },
+    {
       // psql habit: Ctrl+C cancels the running query (when nothing is selected).
       key: 'Ctrl-c',
       run: (view) => view.state.selection.main.empty && (o.onInterrupt?.() ?? false),
@@ -109,7 +114,7 @@ export function createEditor(o: EditorOptions): EditorView {
     sqlLanguage,
     syntaxHighlighting(classHighlighter),
     autocompletion({ override: [pgCompletion(o.catalog)], activateOnTyping: true, maxRenderedOptions: 80, icons: false }),
-    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap]),
     EditorView.lineWrapping,
     EditorState.tabSize.of(4),
     EditorView.updateListener.of((u) => {

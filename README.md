@@ -79,7 +79,7 @@ the UI prompts for it; it's kept in memory only.
 | `Ctrl/⌘+R` | search the full history |
 | `Esc` or `Ctrl+C` while running | cancel the query |
 | `Ctrl/⌘+O` | switch session |
-| `Ctrl+Space` | completions |
+| `Tab` / `Ctrl+Space` | accept the highlighted completion, or open the list |
 | In a grid: arrows, `Shift`+arrows, `Ctrl/⌘+A`, `Ctrl/⌘+C`, `Ctrl/⌘+Shift+C`, `Enter` | move, extend, select all, copy, copy with headers, view value |
 
 ### Backslash commands

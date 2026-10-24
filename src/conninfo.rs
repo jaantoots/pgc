@@ -449,8 +449,8 @@ pub fn resolve(explicit: &Params) -> Result<Resolved> {
     let application_name = get("application_name").or_else(|| get("fallback_application_name")).unwrap_or_else(|| "pgc".into());
 
     let mut stored = p.clone();
+    // The service name is kept (its values are already applied) so it can be shown.
     stored.remove("password");
-    stored.remove("service");
     Ok(Resolved {
         params: stored,
         targets,
