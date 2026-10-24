@@ -693,7 +693,10 @@ impl Actor {
                 Message::EmptyQueryResponse => {}
                 Message::ErrorResponse(e) => {
                     let e = pgwire::parse_error(&e)?;
-                    if let Some((cols, rows, count, _)) = cur.take() {
+                    // Keep rows received before the error (e.g. on cancel), like a partial result.
+                    if let Some((cols, rows, count, _)) = cur.take()
+                        && count > 0
+                    {
                         pending.push(Pending::Rows(cols, rows, count, None));
                     }
                     error = Some(e.clone());
@@ -867,7 +870,9 @@ impl Actor {
                                 Output::Text(t) => text(t),
                                 Output::Table(t) => {
                                     let n = t.rows.len() as u64;
-                                    let mut item = self.make_rows_item(&t.columns, t.rows, n, None, false, results);
+                                    // psql shows NULLs in describe output as blanks.
+                                    let rows = t.rows.into_iter().map(|r| r.into_iter().map(|v| v.or_else(|| Some(String::new()))).collect()).collect();
+                                    let mut item = self.make_rows_item(&t.columns, rows, n, None, false, results);
                                     if let Item::Rows(r) = &mut item {
                                         r.title = t.title;
                                         r.footer = t.footer;
