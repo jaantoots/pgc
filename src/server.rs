@@ -245,17 +245,19 @@ async fn export_result(State(ctx): State<Ctx>, Path(id): Path<String>, Query(q):
                 out.push_str("\r\n");
             }
             for r in &data.rows {
-                out.push_str(&r.iter().map(|v| v.as_deref().map(|v| csv_field(v, sep)).unwrap_or_default()).collect::<Vec<_>>().join(&sep.to_string()));
+                out.push_str(
+                    &r.iter()
+                        .map(|v| v.as_deref().map(|v| csv_field(v, sep)).unwrap_or_default())
+                        .collect::<Vec<_>>()
+                        .join(&sep.to_string()),
+                );
                 out.push_str("\r\n");
             }
             (out, if format == "csv" { "text/csv" } else { "text/tab-separated-values" }, format)
         }
         "json" => {
-            let rows: Vec<serde_json::Map<String, serde_json::Value>> = data
-                .rows
-                .iter()
-                .map(|r| data.columns.iter().zip(r).map(|(c, v)| (c.name.clone(), json!(v))).collect())
-                .collect();
+            let rows: Vec<serde_json::Map<String, serde_json::Value>> =
+                data.rows.iter().map(|r| data.columns.iter().zip(r).map(|(c, v)| (c.name.clone(), json!(v))).collect()).collect();
             (serde_json::to_string_pretty(&rows).map_err(internal)?, "application/json", "json")
         }
         _ => return Err((StatusCode::BAD_REQUEST, "unknown format".into())),
@@ -264,7 +266,10 @@ async fn export_result(State(ctx): State<Ctx>, Path(id): Path<String>, Query(q):
     let name: String = name.chars().filter(|c| c.is_alphanumeric() || "-_.".contains(*c)).collect();
     let disp = format!("attachment; filename=\"{name}.{ext}\"");
     Ok((
-        [(header::CONTENT_TYPE, HeaderValue::from_str(&format!("{mime}; charset=utf-8")).unwrap()), (header::CONTENT_DISPOSITION, HeaderValue::from_str(&disp).unwrap())],
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_str(&format!("{mime}; charset=utf-8")).unwrap()),
+            (header::CONTENT_DISPOSITION, HeaderValue::from_str(&disp).unwrap()),
+        ],
         body,
     )
         .into_response())

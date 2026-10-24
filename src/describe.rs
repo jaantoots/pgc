@@ -17,19 +17,12 @@ pub enum Output {
 }
 
 fn text_columns(names: &[&str]) -> Vec<Column> {
-    names
-        .iter()
-        .map(|n| Column { name: n.to_string(), type_oid: 25, table_oid: 0, column_id: 0, type_modifier: -1 })
-        .collect()
+    names.iter().map(|n| Column { name: n.to_string(), type_oid: 25, table_oid: 0, column_id: 0, type_modifier: -1 }).collect()
 }
 
 /// Quote a string as an SQL literal.
 pub fn lit(s: &str) -> String {
-    if s.contains('\\') {
-        format!("E'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
-    } else {
-        format!("'{}'", s.replace('\'', "''"))
-    }
+    if s.contains('\\') { format!("E'{}'", s.replace('\\', "\\\\").replace('\'', "''")) } else { format!("'{}'", s.replace('\'', "''")) }
 }
 
 /// Quote an identifier if needed.
@@ -81,7 +74,13 @@ pub fn pattern_regexes(pattern: &str) -> (Option<String>, Option<String>) {
 
 /// Build WHERE conditions for a pattern. `visibility` is applied when no
 /// schema was given (e.g. `pg_catalog.pg_table_is_visible(c.oid)`).
-fn pattern_cond(pattern: Option<&str>, schema_col: &str, name_col: &str, alt_name_col: Option<&str>, visibility: Option<&str>) -> Vec<String> {
+fn pattern_cond(
+    pattern: Option<&str>,
+    schema_col: &str,
+    name_col: &str,
+    alt_name_col: Option<&str>,
+    visibility: Option<&str>,
+) -> Vec<String> {
     let mut conds = Vec::new();
     let (schema, name) = match pattern {
         Some(p) => pattern_regexes(p),
@@ -274,7 +273,9 @@ async fn list_relations(conn: &mut Conn, kinds: &str, f: &Flags, pat: Option<&st
         sql.push_str("\n     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam");
     }
     if show_idx {
-        sql.push_str("\n     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid\n     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid");
+        sql.push_str(
+            "\n     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid\n     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid",
+        );
     }
     let mut conds = vec![format!("c.relkind IN ({})", relkinds.join(","))];
     if !f.system && pat.is_none() {
@@ -409,7 +410,8 @@ async fn list_extensions(conn: &mut Conn, f: &Flags, pat: Option<&str>) -> Resul
     sql.push_str("ORDER BY 1;");
     let mut out = vec![table(conn, "List of installed extensions", &sql).await?];
     if f.verbose {
-        let (_, exts) = conn.query(&format!("SELECT e.oid, e.extname FROM pg_catalog.pg_extension e {}ORDER BY 2", where_clause(&conds))).await?;
+        let (_, exts) =
+            conn.query(&format!("SELECT e.oid, e.extname FROM pg_catalog.pg_extension e {}ORDER BY 2", where_clause(&conds))).await?;
         for e in exts {
             let sql = format!(
                 "SELECT pg_catalog.pg_describe_object(classid, objid, 0) AS \"Object description\"\nFROM pg_catalog.pg_depend\nWHERE refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND refobjid = '{}' AND deptype = 'e'\nORDER BY 1;",
@@ -426,7 +428,9 @@ async fn list_databases(conn: &mut Conn, f: &Flags, pat: Option<&str>) -> Result
         "SELECT d.datname as \"Name\",\n  pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\",\n  pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\",\n",
     );
     if conn.server_version_num() >= 150000 {
-        sql.push_str("  CASE d.datlocprovider WHEN 'b' THEN 'builtin' WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"Locale Provider\",\n");
+        sql.push_str(
+            "  CASE d.datlocprovider WHEN 'b' THEN 'builtin' WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"Locale Provider\",\n",
+        );
     }
     sql.push_str("  d.datcollate as \"Collate\",\n  d.datctype as \"Ctype\",\n");
     sql.push_str("  pg_catalog.array_to_string(d.datacl, E'\\n') AS \"Access privileges\"");
@@ -539,13 +543,11 @@ async fn list_config(conn: &mut Conn, f: &Flags, pat: Option<&str>) -> Result<Ve
 
 async fn show_function(conn: &mut Conn, f: &Flags, args: &[String]) -> Result<Vec<Output>> {
     if args.is_empty() {
-        return Err(Error::Db(DbError::simple("function name is required")));
+        return Err(Error::db(DbError::simple("function name is required")));
     }
     let name = args.join(" ");
     let cast = if name.contains('(') { "regprocedure" } else { "regproc" };
-    let (_, rows) = conn
-        .query(&format!("SELECT pg_catalog.pg_get_functiondef({}::pg_catalog.{cast}::pg_catalog.oid)", lit(&name)))
-        .await?;
+    let (_, rows) = conn.query(&format!("SELECT pg_catalog.pg_get_functiondef({}::pg_catalog.{cast}::pg_catalog.oid)", lit(&name))).await?;
     let def = rows.first().map(|r| get(r, 0).to_string()).unwrap_or_default();
     Ok(vec![Output::Text(if f.verbose { number_lines(&def, "AS ") } else { def })])
 }
@@ -557,7 +559,7 @@ fn number_lines(def: &str, _body_marker: &str) -> String {
 
 async fn show_view(conn: &mut Conn, f: &Flags, args: &[String]) -> Result<Vec<Output>> {
     if args.is_empty() {
-        return Err(Error::Db(DbError::simple("view name is required")));
+        return Err(Error::db(DbError::simple("view name is required")));
     }
     let name = args.join(" ");
     let (_, rows) = conn
@@ -566,7 +568,7 @@ async fn show_view(conn: &mut Conn, f: &Flags, args: &[String]) -> Result<Vec<Ou
             lit(&name)
         ))
         .await?;
-    let r = rows.first().ok_or_else(|| Error::Db(DbError::simple(format!("view \"{name}\" not found"))))?;
+    let r = rows.first().ok_or_else(|| Error::db(DbError::simple(format!("view \"{name}\" not found"))))?;
     let kw = if get(r, 2) == "m" { "CREATE MATERIALIZED VIEW" } else { "CREATE OR REPLACE VIEW" };
     let mut def = format!("{kw} {}.{}", ident(get(r, 0)), ident(get(r, 1)));
     let opts = get(r, 4);
@@ -582,7 +584,9 @@ async fn show_view(conn: &mut Conn, f: &Flags, args: &[String]) -> Result<Vec<Ou
 }
 
 async fn describe_relations(conn: &mut Conn, pat: &str, f: &Flags) -> Result<Vec<Output>> {
-    let mut sql = String::from("SELECT c.oid, n.nspname, c.relname\nFROM pg_catalog.pg_class c\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n");
+    let mut sql = String::from(
+        "SELECT c.oid, n.nspname, c.relname\nFROM pg_catalog.pg_class c\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n",
+    );
     sql.push_str(&where_clause(&pattern_cond(Some(pat), "n.nspname", "c.relname", None, Some("pg_catalog.pg_table_is_visible(c.oid)"))));
     sql.push_str("ORDER BY 2, 3;");
     let (_, rels) = conn.query(&sql).await?;
@@ -608,7 +612,7 @@ async fn describe_one(conn: &mut Conn, oid: &str, schema: &str, name: &str, f: &
             if v >= 120000 { "LEFT JOIN pg_catalog.pg_am am ON (c.relam = am.oid)" } else { "" }
         ))
         .await?;
-    let info = info.into_iter().next().ok_or_else(|| Error::Db(DbError::simple("relation disappeared")))?;
+    let info = info.into_iter().next().ok_or_else(|| Error::db(DbError::simple("relation disappeared")))?;
     let kind = get(&info, 1).to_string();
     let persistence = get(&info, 10).to_string();
     let qname = format!("{schema}.{name}");
@@ -646,7 +650,9 @@ async fn describe_one(conn: &mut Conn, oid: &str, schema: &str, name: &str, f: &
         "(SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid, true) FROM pg_catalog.pg_attrdef d WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)"
     };
     let coll = "(SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation)";
-    let idx_key = format!("CASE WHEN a.attnum <= (SELECT i.indnkeyatts FROM pg_catalog.pg_index i WHERE i.indexrelid = '{oid}') THEN 'yes' ELSE 'no' END");
+    let idx_key = format!(
+        "CASE WHEN a.attnum <= (SELECT i.indnkeyatts FROM pg_catalog.pg_index i WHERE i.indexrelid = '{oid}') THEN 'yes' ELSE 'no' END"
+    );
     let idx_def = "pg_catalog.pg_get_indexdef(a.attrelid, a.attnum, TRUE)";
     let mut headers: Vec<&str> = vec!["Column", "Type"];
     if is_index {
@@ -844,7 +850,11 @@ async fn describe_one(conn: &mut Conn, oid: &str, schema: &str, name: &str, f: &
                 head = "Policies (row security disabled):".into();
             }
             if r.is_empty() {
-                head = if truthy(&info, 6) { "Policies (forced row security enabled): (none)".into() } else { "Policies (row security enabled): (none)".into() };
+                head = if truthy(&info, 6) {
+                    "Policies (forced row security enabled): (none)".into()
+                } else {
+                    "Policies (row security enabled): (none)".into()
+                };
             }
             footer.push(head);
             for r in &r {
@@ -914,7 +924,7 @@ async fn describe_one(conn: &mut Conn, oid: &str, schema: &str, name: &str, f: &
                 "SELECT c.oid::pg_catalog.regclass, c.relkind, inhdetachpending, pg_catalog.pg_get_expr(c.relpartbound, c.oid) FROM pg_catalog.pg_inherits i, pg_catalog.pg_class c WHERE c.oid = i.inhrelid AND i.inhparent = '{oid}' ORDER BY pg_catalog.pg_get_expr(c.relpartbound, c.oid) = 'DEFAULT', c.oid::pg_catalog.regclass::pg_catalog.text;"
             ))
             .await
-            .or_else(|_| Ok::<_, Error>((vec![], vec![])))?;
+            .unwrap_or_default();
         let is_part = kind == "p";
         if !r.is_empty() && !f.verbose {
             footer.push(if is_part {
@@ -993,12 +1003,22 @@ async fn describe_sequence(conn: &mut Conn, oid: &str, title: String) -> Result<
         .await?;
     let mut footer = Vec::new();
     if let Some(o) = owner.first() {
-        footer.push(if get(o, 1) == "i" { format!("Sequence for identity column: {}", get(o, 0)) } else { format!("Owned by: {}", get(o, 0)) });
+        footer.push(if get(o, 1) == "i" {
+            format!("Sequence for identity column: {}", get(o, 0))
+        } else {
+            format!("Owned by: {}", get(o, 0))
+        });
     }
     let columns = vec!["Type", "Start", "Minimum", "Maximum", "Increment", "Cycles?", "Cache"]
         .into_iter()
         .enumerate()
-        .map(|(i, n)| Column { name: n.into(), type_oid: if (1..=4).contains(&i) || i == 6 { 20 } else { 25 }, table_oid: 0, column_id: 0, type_modifier: -1 })
+        .map(|(i, n)| Column {
+            name: n.into(),
+            type_oid: if (1..=4).contains(&i) || i == 6 { 20 } else { 25 },
+            table_oid: 0,
+            column_id: 0,
+            type_modifier: -1,
+        })
         .collect();
     Ok(Output::Table(Table { title: Some(title), columns, rows, footer }))
 }
@@ -1035,5 +1055,71 @@ mod tests {
         assert_eq!(lit("a\\b"), "E'a\\\\b'");
         assert_eq!(ident("users"), "users");
         assert_eq!(ident("My Table"), "\"My Table\"");
+    }
+}
+
+/// Tests against a live server; set PGC_TEST_CONNINFO to run them.
+#[cfg(test)]
+mod db_tests {
+    use super::*;
+    use crate::conninfo;
+
+    async fn conn() -> Option<Conn> {
+        let ci = std::env::var("PGC_TEST_CONNINFO").ok()?;
+        let r = conninfo::resolve(&conninfo::parse(&ci).unwrap()).unwrap();
+        Some(Conn::connect(&r, None).await.expect("connect"))
+    }
+
+    fn table(o: &Output) -> &Table {
+        match o {
+            Output::Table(t) => t,
+            Output::Text(t) => panic!("expected a table, got {t}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn describe_table() {
+        let Some(mut c) = conn().await else { return };
+        c.query(
+            "CREATE TEMP TABLE pgc_t (id int GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL DEFAULT 'x', \
+             n numeric CHECK (n > 0)); CREATE INDEX pgc_t_name ON pgc_t (lower(name));",
+        )
+        .await
+        .unwrap();
+        let out = run(&mut c, "d", &["pgc_t".into()]).await.unwrap().unwrap();
+        let t = table(&out[0]);
+        assert!(t.title.as_deref().unwrap().starts_with("Table \"pg_temp"));
+        let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Column", "Type", "Collation", "Nullable", "Default"]);
+        assert_eq!(t.rows[0][4].as_deref(), Some("generated always as identity"));
+        assert_eq!(t.rows[1][3].as_deref(), Some("not null"));
+        assert_eq!(t.rows[1][4].as_deref(), Some("'x'::text"));
+        let f = t.footer.join("\n");
+        assert!(f.contains("Indexes:\n    \"pgc_t_pkey\" PRIMARY KEY, btree (id)\n    \"pgc_t_name\" btree (lower(name))"), "{f}");
+        assert!(f.contains("Check constraints:\n    \"pgc_t_n_check\" CHECK (n > 0::numeric)"), "{f}");
+
+        let out = run(&mut c, "d", &["pgc_t_pkey".into()]).await.unwrap().unwrap();
+        assert!(table(&out[0]).footer[0].starts_with("primary key, btree, for table"));
+
+        let out = run(&mut c, "d", &["nonexistent_xyz".into()]).await.unwrap().unwrap();
+        assert!(matches!(&out[0], Output::Text(t) if t.contains("Did not find")));
+        assert!(run(&mut c, "nope", &[]).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn lists_and_errors() {
+        let Some(mut c) = conn().await else { return };
+        for cmd in ["l", "dn+", "df", "dT", "du", "dx", "dt", "di", "dv", "ds", "db", "dD", "dp", "dA", "dy", "des", "dconfig"] {
+            let r = run(&mut c, cmd, &[]).await.unwrap();
+            assert!(r.is_ok(), "\\{cmd}: {:?}", r.err());
+        }
+        let out = run(&mut c, "sf", &["pg_catalog.lower(text)".into()]).await.unwrap();
+        assert!(out.is_ok());
+        let e = c.query("select 1/0").await.unwrap_err();
+        assert!(matches!(&e, Error::Db(d) if d.code == "22012"));
+        // The connection is usable after an error.
+        let (cols, rows) = c.query("select 1 as a, null::text as b").await.unwrap();
+        assert_eq!(cols[0].name, "a");
+        assert_eq!(rows, vec![vec![Some("1".to_string()), None]]);
     }
 }

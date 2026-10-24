@@ -70,11 +70,7 @@ pub fn parse(s: &str) -> Result<Params> {
 }
 
 fn check_keyword(k: &str) -> Result<()> {
-    if KEYWORDS.contains(&k) {
-        Ok(())
-    } else {
-        bail!("invalid connection option \"{k}\"")
-    }
+    if KEYWORDS.contains(&k) { Ok(()) } else { bail!("invalid connection option \"{k}\"") }
 }
 
 fn parse_kv(s: &str) -> Result<Params> {
@@ -261,10 +257,7 @@ fn sysconfdirs() -> Vec<PathBuf> {
     if let Ok(d) = std::env::var("PGSYSCONFDIR") {
         return vec![PathBuf::from(d)];
     }
-    ["/etc/postgresql-common", "/etc/sysconfig/pgsql", "/usr/local/etc", "/opt/homebrew/etc", "/etc"]
-        .iter()
-        .map(PathBuf::from)
-        .collect()
+    ["/etc/postgresql-common", "/etc/sysconfig/pgsql", "/usr/local/etc", "/opt/homebrew/etc", "/etc"].iter().map(PathBuf::from).collect()
 }
 
 fn service_files() -> Vec<PathBuf> {
@@ -297,9 +290,8 @@ fn parse_service_file(path: &Path) -> Result<BTreeMap<String, Params>> {
             current = Some(name.to_string());
             out.entry(name.to_string()).or_default();
         } else if let Some(svc) = &current {
-            let (k, v) = line
-                .split_once('=')
-                .ok_or_else(|| anyhow!("syntax error in service file \"{}\", line {}", path.display(), n + 1))?;
+            let (k, v) =
+                line.split_once('=').ok_or_else(|| anyhow!("syntax error in service file \"{}\", line {}", path.display(), n + 1))?;
             out.get_mut(svc).unwrap().insert(k.trim().to_string(), v.trim().to_string());
         }
     }
@@ -503,10 +495,7 @@ pub fn pgpass_lookup(file: &Path, host: &Host, port: u16, db: &str, user: &str) 
             return None;
         }
         if meta.permissions().mode() & 0o077 != 0 {
-            tracing::warn!(
-                "password file \"{}\" has group or world access; permissions should be u=rw (0600) or less",
-                file.display()
-            );
+            tracing::warn!("password file \"{}\" has group or world access; permissions should be u=rw (0600) or less", file.display());
             return None;
         }
     }

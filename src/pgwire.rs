@@ -92,13 +92,19 @@ impl std::fmt::Display for DbError {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
-    Db(DbError),
+    Db(Box<DbError>),
     #[error("{0}")]
     Io(#[from] io::Error),
     #[error("password required")]
     NeedPassword,
     #[error("{0}")]
     Other(String),
+}
+
+impl Error {
+    pub fn db(e: DbError) -> Error {
+        Error::Db(Box::new(e))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -163,6 +169,7 @@ pub struct Conn {
 /// A message that may arrive at any time, outside of a query's results.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
+#[allow(clippy::large_enum_variant)]
 pub enum Async {
     Notice(DbError),
     Notification { pid: i32, channel: String, payload: String },
@@ -226,9 +233,7 @@ mod tls {
         ) -> Result<ServerCertVerified, Error> {
             match self.0.verify_server_cert(e, i, n, o, t) {
                 Err(Error::InvalidCertificate(CertificateError::NotValidForName))
-                | Err(Error::InvalidCertificate(CertificateError::NotValidForNameContext { .. })) => {
-                    Ok(ServerCertVerified::assertion())
-                }
+                | Err(Error::InvalidCertificate(CertificateError::NotValidForNameContext { .. })) => Ok(ServerCertVerified::assertion()),
                 r => r,
             }
         }
@@ -265,11 +270,8 @@ fn tls_config(r: &Resolved) -> Result<rustls::ClientConfig> {
     let builder = match r.sslmode {
         SslMode::VerifyCa | SslMode::VerifyFull => {
             let mut roots = rustls::RootCertStore::empty();
-            let rootcert = r
-                .sslrootcert
-                .clone()
-                .or_else(|| pgdir.as_ref().map(|d| d.join("root.crt").display().to_string()))
-                .unwrap_or_default();
+            let rootcert =
+                r.sslrootcert.clone().or_else(|| pgdir.as_ref().map(|d| d.join("root.crt").display().to_string())).unwrap_or_default();
             if rootcert == "system" {
                 for c in rustls_native_certs::load_native_certs().certs {
                     let _ = roots.add(c);
@@ -315,9 +317,7 @@ fn tls_config(r: &Resolved) -> Result<rustls::ClientConfig> {
 
 async fn with_timeout<T>(t: Option<Duration>, f: impl Future<Output = Result<T>>) -> Result<T> {
     match t {
-        Some(t) => tokio::time::timeout(t, f)
-            .await
-            .map_err(|_| Error::Other("timeout expired".into()))?,
+        Some(t) => tokio::time::timeout(t, f).await.map_err(|_| Error::Other("timeout expired".into()))?,
         None => f.await,
     }
 }
@@ -366,7 +366,11 @@ impl Conn {
                 }
                 let (mut s, addr) = match sock {
                     Some(s) => s,
-                    None => return Err(last.map(Error::Io).unwrap_or_else(|| Error::Other(format!("could not translate host name \"{target}\" to address")))),
+                    None => {
+                        return Err(last
+                            .map(Error::Io)
+                            .unwrap_or_else(|| Error::Other(format!("could not translate host name \"{target}\" to address"))));
+                    }
                 };
                 s.set_nodelay(true)?;
                 if matches!(r.sslmode, SslMode::Disable | SslMode::Allow) {
@@ -381,10 +385,7 @@ impl Conn {
                         let connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
                         let sni = rustls::pki_types::ServerName::try_from(name.clone())
                             .map_err(|e| Error::Other(format!("invalid server name \"{name}\": {e}")))?;
-                        let t = connector
-                            .connect(sni, s)
-                            .await
-                            .map_err(|e| Error::Other(format!("SSL error: {e}")))?;
+                        let t = connector.connect(sni, s).await.map_err(|e| Error::Other(format!("SSL error: {e}")))?;
                         let ver = t.get_ref().1.protocol_version().map(|v| format!("{v:?}")).unwrap_or_default();
                         (Box::new(t), Endpoint::Tcp(addr), Some(ver.replace('_', ".")))
                     } else if r.sslmode == SslMode::Prefer {
@@ -423,12 +424,8 @@ impl Conn {
     }
 
     async fn startup(&mut self, r: &Resolved, password: Option<String>) -> Result<()> {
-        let mut params: Vec<(&str, &str)> = vec![
-            ("user", &r.user),
-            ("database", &r.dbname),
-            ("application_name", &r.application_name),
-            ("client_encoding", "UTF8"),
-        ];
+        let mut params: Vec<(&str, &str)> =
+            vec![("user", &r.user), ("database", &r.dbname), ("application_name", &r.application_name), ("client_encoding", "UTF8")];
         if let Some(o) = &r.options {
             params.push(("options", o));
         }
@@ -465,14 +462,14 @@ impl Conn {
                     self.flush().await?;
                     match self.recv_raw().await? {
                         Message::AuthenticationSaslContinue(b) => scram.update(b.data())?,
-                        Message::ErrorResponse(e) => return Err(Error::Db(DbError::parse(e.fields())?)),
+                        Message::ErrorResponse(e) => return Err(Error::db(DbError::parse(e.fields())?)),
                         _ => return Err(Error::Other("unexpected message during SASL authentication".into())),
                     }
                     frontend::sasl_response(scram.message(), &mut self.wbuf)?;
                     self.flush().await?;
                     match self.recv_raw().await? {
                         Message::AuthenticationSaslFinal(b) => scram.finish(b.data())?,
-                        Message::ErrorResponse(e) => return Err(Error::Db(DbError::parse(e.fields())?)),
+                        Message::ErrorResponse(e) => return Err(Error::db(DbError::parse(e.fields())?)),
                         _ => return Err(Error::Other("unexpected message during SASL authentication".into())),
                     }
                 }
@@ -482,7 +479,7 @@ impl Conn {
                 | Message::AuthenticationScmCredential => {
                     return Err(Error::Other("authentication method not supported by pgc (GSSAPI/SSPI)".into()));
                 }
-                Message::ErrorResponse(e) => return Err(Error::Db(DbError::parse(e.fields())?)),
+                Message::ErrorResponse(e) => return Err(Error::db(DbError::parse(e.fields())?)),
                 Message::NoticeResponse(_) => {}
                 _ => return Err(Error::Other("unexpected message during authentication".into())),
             }
@@ -502,7 +499,7 @@ impl Conn {
                     self.tx = tx_status(s.status());
                     return Ok(());
                 }
-                Message::ErrorResponse(e) => return Err(Error::Db(DbError::parse(e.fields())?)),
+                Message::ErrorResponse(e) => return Err(Error::db(DbError::parse(e.fields())?)),
                 Message::NoticeResponse(_) => {}
                 _ => return Err(Error::Other("unexpected message during startup".into())),
             }
@@ -524,10 +521,7 @@ impl Conn {
             }
             let n = self.stream.read_buf(&mut self.rbuf).await?;
             if n == 0 {
-                return Err(Error::Io(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "server closed the connection unexpectedly",
-                )));
+                return Err(Error::Io(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection unexpectedly")));
             }
         }
     }
@@ -613,7 +607,7 @@ impl Conn {
             }
         }
         match err {
-            Some(e) => Err(Error::Db(e)),
+            Some(e) => Err(Error::db(e)),
             None => Ok((cols, rows)),
         }
     }
@@ -638,7 +632,7 @@ impl Conn {
             }
         }
         match err {
-            Some(e) => Err(Error::Db(e)),
+            Some(e) => Err(Error::db(e)),
             None => Ok(cols),
         }
     }

@@ -198,7 +198,9 @@ async fn main() -> Result<()> {
 
     let listener = match tokio::net::TcpListener::bind(args.listen).await {
         Ok(l) => l,
-        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => return hand_off(&args, &token, &default_conninfo, resolved.password.clone()),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            return hand_off(&args, &token, &default_conninfo, resolved.password.clone());
+        }
         Err(e) => return Err(e).with_context(|| format!("listening on {}", args.listen)),
     };
 

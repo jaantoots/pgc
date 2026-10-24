@@ -85,6 +85,12 @@ export default function SessionView(props: { id: string }) {
         }
         return false;
       },
+      onInterrupt: () => {
+        if (!st.running) return false;
+        s.send({ type: 'cancel' });
+        toast('Cancel requested');
+        return true;
+      },
       onHistory: (dir, current) => {
         if (!hist.length) return null;
         if (histIdx === -1) {

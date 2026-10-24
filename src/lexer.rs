@@ -27,11 +27,7 @@ impl Stmt {
 
     fn is_create_routine(&self) -> bool {
         let w: Vec<&str> = self.words.iter().map(String::as_str).collect();
-        match w.as_slice() {
-            ["create", "function" | "procedure", ..] => true,
-            ["create", "or", "replace", "function" | "procedure", ..] => true,
-            _ => false,
-        }
+        matches!(w.as_slice(), ["create", "function" | "procedure", ..] | ["create", "or", "replace", "function" | "procedure", ..])
     }
 
     fn word(&mut self, w: &str) {
@@ -39,9 +35,7 @@ impl Stmt {
         if self.words.len() < 4 {
             self.words.push(lw.clone());
         }
-        if lw == "begin" && self.is_create_routine() {
-            self.begin_depth += 1;
-        } else if lw == "case" && self.begin_depth > 0 {
+        if (lw == "begin" && self.is_create_routine()) || (lw == "case" && self.begin_depth > 0) {
             self.begin_depth += 1;
         } else if lw == "end" && self.begin_depth > 0 {
             self.begin_depth -= 1;
@@ -153,7 +147,10 @@ pub fn split(input: &str) -> Vec<Segment> {
                             i = n;
                             break;
                         }
-                        if chars[k].1 == '$' && k + tag_chars.len() <= n && chars[k..k + tag_chars.len()].iter().map(|x| x.1).eq(tag_chars.iter().copied()) {
+                        if chars[k].1 == '$'
+                            && k + tag_chars.len() <= n
+                            && chars[k..k + tag_chars.len()].iter().map(|x| x.1).eq(tag_chars.iter().copied())
+                        {
                             i = k + tag_chars.len();
                             break;
                         }

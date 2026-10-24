@@ -231,12 +231,7 @@ impl Store {
         db.execute_batch(SCHEMA)?;
         // Anything still "running" was interrupted by a previous shutdown.
         db.execute("UPDATE entries SET status = 'interrupted' WHERE status = 'running'", [])?;
-        Ok(Store {
-            db: Mutex::new(db),
-            cache: Mutex::new(ResultCache::new(1 << 30)),
-            persist_rows: 20_000,
-            persist_bytes: 16 << 20,
-        })
+        Ok(Store { db: Mutex::new(db), cache: Mutex::new(ResultCache::new(1 << 30)), persist_rows: 20_000, persist_bytes: 16 << 20 })
     }
 
     #[cfg(test)]
@@ -429,7 +424,8 @@ impl Store {
             .optional()?
         };
         let Some((cols, rows, count)) = row else { return Ok(None) };
-        let data = Arc::new(ResultData { columns: serde_json::from_str(&cols)?, rows: serde_json::from_str(&rows)?, row_count: count as u64 });
+        let data =
+            Arc::new(ResultData { columns: serde_json::from_str(&cols)?, rows: serde_json::from_str(&rows)?, row_count: count as u64 });
         self.cache.lock().unwrap().insert(id.to_string(), data.clone());
         Ok(Some(data))
     }

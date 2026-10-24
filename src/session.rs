@@ -198,8 +198,10 @@ fn is_numeric_type(oid: u32) -> bool {
 
 fn error_item(e: &Error, offset: Option<usize>) -> Item {
     match e {
-        Error::Db(d) => Item::Error { error: d.clone(), offset },
-        Error::NeedPassword => Item::Error { error: DbError::simple("password authentication required: enter the password to connect"), offset: None },
+        Error::Db(d) => Item::Error { error: (**d).clone(), offset },
+        Error::NeedPassword => {
+            Item::Error { error: DbError::simple("password authentication required: enter the password to connect"), offset: None }
+        }
         e => Item::Error { error: DbError { severity: "ERROR".into(), message: e.to_string(), ..Default::default() }, offset: None },
     }
 }
@@ -508,7 +510,13 @@ impl Actor {
                     if let Some(Work::Seg(Segment::Meta { name, .. })) = work.front()
                         && matches!(name.as_str(), "g" | "gx" | "G" | "gdesc")
                     {
-                        mode = if name == "gdesc" { "gdesc" } else if name == "g" { "" } else { "gx" };
+                        mode = if name == "gdesc" {
+                            "gdesc"
+                        } else if name == "g" {
+                            ""
+                        } else {
+                            "gx"
+                        };
                         work.pop_front();
                     }
                     self.last_sql = Some(text.clone());
@@ -645,6 +653,7 @@ impl Actor {
         conn.send_query(text).await?;
         // Statement results are collected until ReadyForQuery so unknown
         // type names can be resolved before they're shown.
+        #[allow(clippy::large_enum_variant)]
         enum Pending {
             Rows(Vec<Column>, Vec<Row>, u64, Option<String>),
             Item(Item),
@@ -745,7 +754,7 @@ impl Actor {
             self.push_item(entry, item);
         }
         match error {
-            Some(e) => Err(Error::Db(e)),
+            Some(e) => Err(Error::db(e)),
             None => Ok(()),
         }
     }
@@ -800,11 +809,17 @@ impl Actor {
                     Some("off") => "off".into(),
                     Some("auto") => "auto".into(),
                     Some(o) => {
-                        let e = Error::Db(DbError::simple(format!("\\x: unrecognized value \"{o}\": Boolean expected")));
+                        let e = Error::db(DbError::simple(format!("\\x: unrecognized value \"{o}\": Boolean expected")));
                         self.push_item(entry, error_item(&e, None));
                         return Err(e);
                     }
-                    None => if s.expanded == "on" { "off".into() } else { "on".into() },
+                    None => {
+                        if s.expanded == "on" {
+                            "off".into()
+                        } else {
+                            "on".into()
+                        }
+                    }
                 };
                 let msg = match s.expanded.as_str() {
                     "on" => "Expanded display is on.",
@@ -818,7 +833,9 @@ impl Actor {
             }
             "timing" => self.push_item(entry, text("Timing is always on in pgc.".into())),
             "echo" | "qecho" | "warn" => self.push_item(entry, text(argv.join(" "))),
-            "q" | "quit" => self.push_item(entry, text("Close the browser tab to leave this session; it stays saved and can be resumed.".into())),
+            "q" | "quit" => {
+                self.push_item(entry, text("Close the browser tab to leave this session; it stays saved and can be resumed.".into()))
+            }
             "conninfo" => {
                 let s = self.conninfo_text();
                 self.push_item(entry, text(s));
@@ -830,7 +847,7 @@ impl Actor {
             "c" | "connect" => return self.meta_connect(entry, &argv).await,
             "g" | "gx" | "G" => {
                 let Some(sql) = self.last_sql.clone() else {
-                    let e = Error::Db(DbError::simple("\\g: query buffer is empty"));
+                    let e = Error::db(DbError::simple("\\g: query buffer is empty"));
                     self.push_item(entry, error_item(&e, None));
                     return Err(e);
                 };
@@ -846,9 +863,10 @@ impl Actor {
                 self.push_item(entry, text(s));
             }
             "copy" => return self.meta_copy(entry, args).await,
-            "e" | "edit" | "ef" | "ev" | "!" | "watch" | "w" | "write" | "o" | "out" | "s" | "password" | "set" | "unset" | "pset" | "a" | "t" | "H" | "f" | "C" | "T"
-            | "gset" | "gexec" | "if" | "elif" | "else" | "endif" | "prompt" | "setenv" | "cd" | "lo_import" | "lo_export" | "lo_list" | "lo_unlink" | "bind" | "crosstabview" => {
-                let e = Error::Db(DbError::simple(format!("\\{name} is not supported in pgc")));
+            "e" | "edit" | "ef" | "ev" | "!" | "watch" | "w" | "write" | "o" | "out" | "s" | "password" | "set" | "unset" | "pset"
+            | "a" | "t" | "H" | "f" | "C" | "T" | "gset" | "gexec" | "if" | "elif" | "else" | "endif" | "prompt" | "setenv" | "cd"
+            | "lo_import" | "lo_export" | "lo_list" | "lo_unlink" | "bind" | "crosstabview" => {
+                let e = Error::db(DbError::simple(format!("\\{name} is not supported in pgc")));
                 self.push_item(entry, error_item(&e, None));
                 return Err(e);
             }
@@ -856,7 +874,7 @@ impl Actor {
                 let conn = self.conn.as_mut().ok_or_else(|| Error::Other("not connected".into()))?;
                 match describe::run(conn, name, &argv).await {
                     None => {
-                        let e = Error::Db(DbError::simple(format!("invalid command \\{name}\nTry \\? for help.")));
+                        let e = Error::db(DbError::simple(format!("invalid command \\{name}\nTry \\? for help.")));
                         self.push_item(entry, error_item(&e, None));
                         return Err(e);
                     }
@@ -871,7 +889,11 @@ impl Actor {
                                 Output::Table(t) => {
                                     let n = t.rows.len() as u64;
                                     // psql shows NULLs in describe output as blanks.
-                                    let rows = t.rows.into_iter().map(|r| r.into_iter().map(|v| v.or_else(|| Some(String::new()))).collect()).collect();
+                                    let rows = t
+                                        .rows
+                                        .into_iter()
+                                        .map(|r| r.into_iter().map(|v| v.or_else(|| Some(String::new()))).collect())
+                                        .collect();
                                     let mut item = self.make_rows_item(&t.columns, rows, n, None, false, results);
                                     if let Item::Rows(r) = &mut item {
                                         r.title = t.title;
@@ -893,9 +915,15 @@ impl Actor {
         let Some(c) = &self.conn else { return "You are currently not connected to a database.".into() };
         let i = &c.info;
         let mut s = if i.unix_socket {
-            format!("You are connected to database \"{}\" as user \"{}\" via socket in \"{}\" at port \"{}\".", i.dbname, i.user, i.host, i.port)
+            format!(
+                "You are connected to database \"{}\" as user \"{}\" via socket in \"{}\" at port \"{}\".",
+                i.dbname, i.user, i.host, i.port
+            )
         } else if let Some(addr) = &i.hostaddr {
-            format!("You are connected to database \"{}\" as user \"{}\" on host \"{}\" (address \"{addr}\") at port \"{}\".", i.dbname, i.user, i.host, i.port)
+            format!(
+                "You are connected to database \"{}\" as user \"{}\" on host \"{}\" (address \"{addr}\") at port \"{}\".",
+                i.dbname, i.user, i.host, i.port
+            )
         } else {
             format!("You are connected to database \"{}\" as user \"{}\" on host \"{}\" at port \"{}\".", i.dbname, i.user, i.host, i.port)
         };
@@ -986,7 +1014,7 @@ impl Actor {
         let (target, dir, file, opts) = match parsed {
             Some(p) => p,
             None => {
-                let e = Error::Db(DbError::simple("\\copy: parse error; expected \\copy table|(query) from|to 'file'"));
+                let e = Error::db(DbError::simple("\\copy: parse error; expected \\copy table|(query) from|to 'file'"));
                 self.push_item(entry, error_item(&e, None));
                 return Err(e);
             }
@@ -999,7 +1027,7 @@ impl Actor {
         let mut input = None;
         if !to {
             if is_std {
-                let e = Error::Db(DbError::simple("\\copy from stdin is not supported in pgc; copy from a file instead"));
+                let e = Error::db(DbError::simple("\\copy from stdin is not supported in pgc; copy from a file instead"));
                 self.push_item(entry, error_item(&e, None));
                 return Err(e);
             }
@@ -1043,7 +1071,7 @@ impl Actor {
         }
         if let Some(e) = error {
             self.push_item(entry, Item::Error { error: e.clone(), offset: None });
-            return Err(Error::Db(e));
+            return Err(Error::db(e));
         }
         if to {
             if is_std {
@@ -1146,10 +1174,7 @@ async fn load_meta(c: &mut Conn) -> Value {
     let relations: Vec<Value> = rels
         .iter()
         .map(|r| {
-            let cols: Vec<Value> = s(r, 3)
-                .lines()
-                .filter_map(|l| l.split_once(' ').map(|(n, t)| json!([n, t])))
-                .collect();
+            let cols: Vec<Value> = s(r, 3).lines().filter_map(|l| l.split_once(' ').map(|(n, t)| json!([n, t]))).collect();
             json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "columns": cols})
         })
         .collect();
@@ -1160,14 +1185,18 @@ async fn load_meta(c: &mut Conn) -> Value {
          WHERE n.nspname !~ '^pg_toast' GROUP BY 1, 2 ORDER BY 1, 2 LIMIT 20000",
     )
     .await;
-    let functions: Vec<Value> = funcs.iter().map(|r| json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "args": s(r, 3)})).collect();
-    let search_path: Vec<String> = q(c, "SELECT pg_catalog.unnest(pg_catalog.current_schemas(true))").await.iter().map(|r| s(r, 0)).collect();
-    let schemas: Vec<String> = q(c, "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_toast' AND nspname !~ '^pg_temp_' ORDER BY 1")
-        .await
-        .iter()
-        .map(|r| s(r, 0))
-        .collect();
-    let databases: Vec<String> = q(c, "SELECT datname FROM pg_catalog.pg_database WHERE datallowconn ORDER BY 1").await.iter().map(|r| s(r, 0)).collect();
+    let functions: Vec<Value> =
+        funcs.iter().map(|r| json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "args": s(r, 3)})).collect();
+    let search_path: Vec<String> =
+        q(c, "SELECT pg_catalog.unnest(pg_catalog.current_schemas(true))").await.iter().map(|r| s(r, 0)).collect();
+    let schemas: Vec<String> =
+        q(c, "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_toast' AND nspname !~ '^pg_temp_' ORDER BY 1")
+            .await
+            .iter()
+            .map(|r| s(r, 0))
+            .collect();
+    let databases: Vec<String> =
+        q(c, "SELECT datname FROM pg_catalog.pg_database WHERE datallowconn ORDER BY 1").await.iter().map(|r| s(r, 0)).collect();
     let roles: Vec<String> = q(c, "SELECT rolname FROM pg_catalog.pg_roles ORDER BY 1").await.iter().map(|r| s(r, 0)).collect();
     let types: Vec<Value> = q(
         c,
@@ -1180,7 +1209,8 @@ async fn load_meta(c: &mut Conn) -> Value {
     .iter()
     .map(|r| json!([s(r, 0), s(r, 1)]))
     .collect();
-    let keywords: Vec<Value> = q(c, "SELECT word, catcode FROM pg_catalog.pg_get_keywords() ORDER BY 1").await.iter().map(|r| json!([s(r, 0), s(r, 1)])).collect();
+    let keywords: Vec<Value> =
+        q(c, "SELECT word, catcode FROM pg_catalog.pg_get_keywords() ORDER BY 1").await.iter().map(|r| json!([s(r, 0), s(r, 1)])).collect();
     json!({
         "relations": relations,
         "functions": functions,
@@ -1203,10 +1233,7 @@ mod tests {
             parse_copy("users to '/tmp/u.csv' with csv header"),
             Some(("users".into(), "to".into(), "/tmp/u.csv".into(), "with csv header".into()))
         );
-        assert_eq!(
-            parse_copy("(select 1 from t) TO stdout"),
-            Some(("(select 1 from t)".into(), "to".into(), "stdout".into(), "".into()))
-        );
+        assert_eq!(parse_copy("(select 1 from t) TO stdout"), Some(("(select 1 from t)".into(), "to".into(), "stdout".into(), "".into())));
         assert_eq!(parse_copy("t(a, b) from data.csv csv"), Some(("t(a, b)".into(), "from".into(), "data.csv".into(), "csv".into())));
         assert_eq!(parse_copy("nothing"), None);
     }

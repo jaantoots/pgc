@@ -17,6 +17,8 @@ export interface EditorOptions {
   /** Run the buffer. Return false to keep the text (e.g. not connected). */
   onRun: (text: string) => void;
   onEscape?: () => boolean;
+  /** Ctrl+C with an empty selection; return true if handled. */
+  onInterrupt?: () => boolean;
   onChange?: (text: string) => void;
   /** History navigation; return the text to show, or null for no change. */
   onHistory?: (dir: -1 | 1, current: string) => string | null;
@@ -89,6 +91,11 @@ export function createEditor(o: EditorOptions): EditorView {
       },
     },
     { key: 'Ctrl-Space', run: startCompletion },
+    {
+      // psql habit: Ctrl+C cancels the running query (when nothing is selected).
+      key: 'Ctrl-c',
+      run: (view) => view.state.selection.main.empty && (o.onInterrupt?.() ?? false),
+    },
   ]);
 
   const extensions: Extension[] = [
