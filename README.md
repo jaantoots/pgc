@@ -154,7 +154,14 @@ make dev     # pgc on :8765 + Vite on :5173 with hot reload
 make test    # Rust and TypeScript unit tests
 make check   # fmt, clippy, typecheck
 PGC_TEST_CONNINFO="dbname=postgres" cargo test   # also run tests against a live server
+make screenshots   # regenerate docs/screenshots
 ```
+
+`make screenshots` creates a demo database (`pgc_demo`, or `PGC_DEMO_DB`) on
+the server psql would connect to, starts a throwaway pgc against it, and drives
+it with Playwright (`tools/screenshots/`). The data is seeded, so screenshots
+only change when the UI does. On first use, install the browser with
+`cd tools/screenshots && npm ci && npx playwright install chromium`.
 
 Code map: `src/conninfo.rs` (libpq-compatible parameter resolution),
 `src/pgwire.rs` (protocol client, TLS, auth), `src/lexer.rs` (psql-style

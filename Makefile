@@ -1,4 +1,4 @@
-.PHONY: all web release install test check dev clean
+.PHONY: all web release install test check dev screenshots clean
 
 all: release
 
@@ -29,6 +29,10 @@ check: web/node_modules
 # Backend on :8765, Vite dev server with hot reload on :5173 (proxies /api and /ws).
 dev: web/node_modules
 	cargo run -- --no-browser & cd web && npm run dev
+
+# Regenerate docs/screenshots (needs a local PostgreSQL; see tools/screenshots/run.sh).
+screenshots:
+	tools/screenshots/run.sh
 
 clean:
 	cargo clean

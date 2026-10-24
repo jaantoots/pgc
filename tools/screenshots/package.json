@@ -1,0 +1,9 @@
+{
+  "name": "pgc-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Regenerates docs/screenshots; run via `make screenshots`.",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
