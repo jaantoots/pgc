@@ -1112,3 +1112,26 @@ pre {
   background: var(--err);
   color: white;
 }
+
+/* Vim mode */
+.cm-editor .cm-fat-cursor {
+  background: var(--accent) !important;
+  color: var(--panel) !important;
+}
+.cm-editor:not(.cm-focused) .cm-fat-cursor {
+  background: none !important;
+  outline: solid 1px var(--accent) !important;
+  color: transparent !important;
+}
+.cm-editor .cm-panels {
+  background: transparent;
+  color: var(--fg);
+  border-top: 1px solid var(--border);
+}
+.cm-editor .cm-vim-panel {
+  font: 12px var(--mono);
+}
+.cm-editor .cm-vim-panel input {
+  font: inherit;
+  color: var(--fg);
+}

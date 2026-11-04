@@ -7,7 +7,8 @@ import EntryView, { isBig } from './EntryView';
 import { relTime } from './format';
 import { createSession } from './session';
 import type { SessionInfo } from './types';
-import { ContextMenu, Modal, modKey, toast, Toasts } from './ui';
+import { prefs, setPrefs } from './prefs';
+import { ContextMenu, isMac, Modal, modKey, openMenu, toast, Toasts } from './ui';
 
 export default function SessionView(props: { id: string }) {
   const s = createSession(props.id);
@@ -220,6 +221,23 @@ export default function SessionView(props: { id: string }) {
             <option value="auto">auto</option>
           </select>
         </label>
+        <button
+          class="btn ghost"
+          title="Editor keybindings"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu(new MouseEvent('click', { clientX: r.left, clientY: r.bottom + 4 }), [
+              { label: 'Vim mode', hint: prefs().vim ? '✓' : '', action: () => setPrefs({ vim: !prefs().vim }) },
+              {
+                label: isMac ? 'Option as Meta' : 'Alt as Meta',
+                hint: prefs().altMeta ? '✓' : '',
+                action: () => setPrefs({ altMeta: !prefs().altMeta }),
+              },
+            ]);
+          }}
+        >
+          Keys
+        </button>
         <button class="btn ghost" onClick={() => setShowHistory(true)} title={`Search history (${modKey}R)`}>
           History
         </button>
