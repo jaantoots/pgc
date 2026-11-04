@@ -106,6 +106,18 @@ the UI prompts for it; it's kept in memory only.
 | `Tab` / `Ctrl+Space` | accept the highlighted completion, or open the list |
 | In a grid: arrows, `Shift`+arrows, `Ctrl/⌘+A`, `Ctrl/⌘+C`, `Ctrl/⌘+Shift+C`, `Enter` | move, extend, select all, copy, copy with headers, view value |
 
+**Keys** in the header toggles two editor options, remembered per browser:
+
+- **Alt as Meta** (macOS: **Option as Meta**) — readline's Meta bindings:
+  `M-b`/`M-f` word back/forward (`M-B`/`M-F` select), `M-d` and
+  `M-Backspace` delete a word, `M-u`/`M-l`/`M-c` upper/lower/capitalize the
+  next word, `M-<`/`M->` start/end of the buffer. On by default, except on
+  macOS, where Option is often needed to type characters such as `@` or `[`.
+- **Vim mode.** Each new buffer starts in insert mode, like readline's vi mode.
+  `Enter` runs a complete statement from normal mode too, `k`/`j` walk the
+  history from the first/last line, `:w` runs the buffer, and `Esc` in normal
+  mode cancels a running query or closes an inline edit (`:q` too).
+
 ### Backslash commands
 
 `\?` `\h` `\echo` `\timing` · `\g` `\gx` `\gdesc` `\i` · `\d[S+]` `\da` `\dA`
