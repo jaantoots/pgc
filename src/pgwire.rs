@@ -17,13 +17,15 @@ use postgres_protocol::message::{backend::Message, frontend};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpStream, UnixStream};
+use ts_rs::TS;
 
 use crate::conninfo::{self, Host, Resolved, SslMode};
 
 pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Stream for T {}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export, optional_fields)]
 pub struct DbError {
     pub severity: String,
     pub code: String,
@@ -109,8 +111,9 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum TxStatus {
     Idle,
     Transaction,

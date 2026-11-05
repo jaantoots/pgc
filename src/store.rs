@@ -8,10 +8,12 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::pgwire::{DbError, Row};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, rename = "Column")]
 pub struct ColumnOut {
     pub name: String,
     pub type_oid: u32,
@@ -19,7 +21,8 @@ pub struct ColumnOut {
     pub numeric: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct RowsItem {
     pub result_id: String,
     pub columns: Vec<ColumnOut>,
@@ -30,8 +33,10 @@ pub struct RowsItem {
     /// Rows we kept (and can serve); less than row_count if truncated.
     pub stored: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub tag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub footer: Vec<String>,
@@ -39,8 +44,9 @@ pub struct RowsItem {
     pub expanded: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
 pub enum Item {
     Rows(RowsItem),
     Command {
@@ -53,6 +59,7 @@ pub enum Item {
         error: DbError,
         /// Character offset of the failing statement within the entry text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         offset: Option<usize>,
     },
     Text {
@@ -65,13 +72,57 @@ pub enum Item {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum EntryStatus {
+    Running,
+    Ok,
+    Error,
+    Cancelled,
+    /// Was still running when pgc last shut down.
+    Interrupted,
+}
+
+impl EntryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EntryStatus::Running => "running",
+            EntryStatus::Ok => "ok",
+            EntryStatus::Error => "error",
+            EntryStatus::Cancelled => "cancelled",
+            EntryStatus::Interrupted => "interrupted",
+        }
+    }
+}
+
+impl rusqlite::types::ToSql for EntryStatus {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+impl rusqlite::types::FromSql for EntryStatus {
+    fn column_result(v: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        Ok(match v.as_str()? {
+            "running" => EntryStatus::Running,
+            "ok" => EntryStatus::Ok,
+            "error" => EntryStatus::Error,
+            "cancelled" => EntryStatus::Cancelled,
+            "interrupted" => EntryStatus::Interrupted,
+            s => return Err(rusqlite::types::FromSqlError::Other(format!("unknown entry status {s:?}").into())),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Entry {
     pub id: String,
     pub session_id: String,
     pub seq: i64,
     pub sql: String,
-    pub status: String,
+    pub status: EntryStatus,
     pub started_at: i64,
     pub duration_ms: Option<f64>,
     pub items: Vec<Item>,
@@ -80,17 +131,26 @@ pub struct Entry {
     pub runs: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Expanded display (`\x`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum Expanded {
+    On,
+    #[default]
+    Off,
+    Auto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
 pub struct Settings {
-    #[serde(default = "default_expanded")]
-    pub expanded: String,
+    #[serde(default)]
+    pub expanded: Expanded,
 }
 
-fn default_expanded() -> String {
-    "off".into()
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct SessionRow {
     pub id: String,
     pub name: Option<String>,
@@ -103,7 +163,8 @@ pub struct SessionRow {
     pub last_sql: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct HistoryRow {
     pub id: i64,
     pub session_id: String,
@@ -479,7 +540,7 @@ mod tests {
             session_id: "s1".into(),
             seq: s.next_seq("s1").unwrap(),
             sql: "select 1".into(),
-            status: "ok".into(),
+            status: EntryStatus::Ok,
             started_at: 1,
             duration_ms: Some(1.5),
             items: vec![Item::Command { tag: "SELECT 1".into() }],

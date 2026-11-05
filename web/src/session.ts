@@ -1,7 +1,7 @@
 import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { Catalog } from './catalog';
-import type { ConnState, Entry, Item, Meta, SessionInfo, Settings } from './types';
+import type { ClientMsg, ConnState, Entry, Item, Meta, SessionInfo, Settings } from './types';
 
 export interface SessionState {
   session: SessionInfo | null;
@@ -13,14 +13,6 @@ export interface SessionState {
   socket: 'connecting' | 'open' | 'closed';
   fatal: string | null;
 }
-
-export type ClientMsg =
-  | { type: 'run'; sql: string; entry_id?: string }
-  | { type: 'cancel' }
-  | { type: 'password'; password: string }
-  | { type: 'connect'; conninfo?: string }
-  | { type: 'settings'; settings: Settings }
-  | { type: 'refresh_meta' };
 
 export function createSession(id: string) {
   const [state, setState] = createStore<SessionState>({
