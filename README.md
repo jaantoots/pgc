@@ -29,8 +29,15 @@ come back to.
   value, pretty-printed for json/jsonb. Expanded mode (`\x on|auto`) per session
   or per result.
 - **Completions and highlighting** that know your schema: tables after
-  `FROM`/`JOIN`, columns of the tables and aliases in the statement, schema
-  qualified names, types after `::`, backslash commands and their arguments.
+  `FROM`/`JOIN`, columns of the tables, aliases, CTEs and subqueries in scope
+  (ambiguous ones qualified), schema qualified names, types after `::`,
+  backslash commands and their arguments. After `JOIN` it suggests the tables
+  linked by a foreign key, ready-made with an alias and the `ON` condition;
+  after `ON` (or `WHERE` in a correlated subquery), the join conditions. `Tab`
+  right after `*` expands it to the column list.
+- **Hover for the schema.** Hover a table, alias, column, CTE or function for
+  its columns and types, primary and foreign keys, and comments. The same card
+  shows next to table and column completions.
 - **libpq configuration.** Connection strings and `postgresql://` URIs, `PG*`
   environment variables, `pg_service.conf`, `.pgpass`, TLS with all `sslmode`s
   (`sslrootcert`, client certificates, `sslrootcert=system`), Unix sockets,

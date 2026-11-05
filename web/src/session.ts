@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
-import { Catalog } from './completion';
+import { Catalog } from './catalog';
 import type { ConnState, Entry, Item, Meta, SessionInfo, Settings } from './types';
 
 export interface SessionState {

@@ -106,16 +106,24 @@ export interface HistoryRow {
   conn_label: string;
 }
 
+/** [name, type, flags, comment]; flags: n = not null, p = primary key, d = has a default. */
+export type ColumnInfo = [string, string, string?, (string | null)?];
+
 export interface Relation {
   schema: string;
   name: string;
   kind: string;
-  columns: [string, string][];
+  comment?: string | null;
+  columns: ColumnInfo[];
 }
+
+/** [schema, table, columns, referenced schema, referenced table, referenced columns, constraint name] */
+export type ForeignKey = [string, string, string[], string, string, string[], string];
 
 export interface Meta {
   relations: Relation[];
-  functions: { schema: string; name: string; kind: string; args: string }[];
+  foreign_keys?: ForeignKey[];
+  functions: { schema: string; name: string; kind: string; args: string; overloads?: number }[];
   search_path: string[];
   schemas: string[];
   databases: string[];

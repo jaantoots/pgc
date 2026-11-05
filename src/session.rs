@@ -1163,32 +1163,61 @@ async fn load_meta(c: &mut Conn) -> Value {
         }
     }
     let s = |r: &Row, i: usize| r.get(i).cloned().flatten().unwrap_or_default();
-    let rels = q(
-        c,
-        "SELECT n.nspname, c.relname, c.relkind, \
-         coalesce(pg_catalog.string_agg(a.attname || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod), E'\\n' ORDER BY a.attnum), '') \
-         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-         LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped \
-         WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname !~ '^pg_toast' AND n.nspname !~ '^pg_temp_' \
-         GROUP BY 1, 2, 3 ORDER BY 1, 2 LIMIT 20000",
-    )
-    .await;
-    let relations: Vec<Value> = rels
-        .iter()
-        .map(|r| {
-            let cols: Vec<Value> = s(r, 3).lines().filter_map(|l| l.split_once(' ').map(|(n, t)| json!([n, t]))).collect();
-            json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "columns": cols})
-        })
-        .collect();
+    let json_rows = |rows: Vec<Row>| -> Vec<Value> { rows.iter().filter_map(|r| serde_json::from_str(&s(r, 0)).ok()).collect() };
+    // Columns are [name, type, flags, comment]: flags has n (not null), p (primary key), d (default).
+    let relations = json_rows(
+        q(
+            c,
+            "SELECT pg_catalog.json_build_object('schema', n.nspname, 'name', c.relname, 'kind', c.relkind, \
+             'comment', pg_catalog.left(pg_catalog.obj_description(c.oid, 'pg_class'), 500), \
+             'columns', coalesce((SELECT pg_catalog.json_agg(pg_catalog.json_build_array(a.attname, \
+                 pg_catalog.format_type(a.atttypid, a.atttypmod), \
+                 CASE WHEN a.attnotnull THEN 'n' ELSE '' END \
+                 || CASE WHEN a.attnum = ANY (pk.indkey) THEN 'p' ELSE '' END \
+                 || CASE WHEN a.atthasdef THEN 'd' ELSE '' END, \
+                 pg_catalog.left(d.description, 300)) ORDER BY a.attnum) \
+               FROM pg_catalog.pg_attribute a \
+               LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objsubid = a.attnum \
+               WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped), '[]'))::text \
+             FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+             LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
+             WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname !~ '^pg_toast' AND n.nspname !~ '^pg_temp_' \
+             ORDER BY n.nspname, c.relname LIMIT 20000",
+        )
+        .await,
+    );
+    // Foreign keys as [schema, table, [columns], ref schema, ref table, [ref columns], name].
+    let foreign_keys = json_rows(
+        q(
+            c,
+            &format!(
+                "SELECT pg_catalog.json_build_array(cn.nspname, cl.relname, \
+                 (SELECT pg_catalog.json_agg(a.attname ORDER BY k.i) FROM pg_catalog.unnest(co.conkey) WITH ORDINALITY k(n, i) \
+                  JOIN pg_catalog.pg_attribute a ON a.attrelid = co.conrelid AND a.attnum = k.n), \
+                 fn.nspname, fl.relname, \
+                 (SELECT pg_catalog.json_agg(a.attname ORDER BY k.i) FROM pg_catalog.unnest(co.confkey) WITH ORDINALITY k(n, i) \
+                  JOIN pg_catalog.pg_attribute a ON a.attrelid = co.confrelid AND a.attnum = k.n), \
+                 co.conname)::text \
+                 FROM pg_catalog.pg_constraint co \
+                 JOIN pg_catalog.pg_class cl ON cl.oid = co.conrelid JOIN pg_catalog.pg_namespace cn ON cn.oid = cl.relnamespace \
+                 JOIN pg_catalog.pg_class fl ON fl.oid = co.confrelid JOIN pg_catalog.pg_namespace fn ON fn.oid = fl.relnamespace \
+                 WHERE co.contype = 'f' AND cn.nspname !~ '^pg_temp_' {} \
+                 ORDER BY cn.nspname, cl.relname, co.conname LIMIT 20000",
+                // Partitions inherit their parent's foreign keys; list each once.
+                if c.server_version_num() >= 120000 { "AND co.conparentid = 0" } else { "" }
+            ),
+        )
+        .await,
+    );
     let funcs = q(
         c,
-        "SELECT n.nspname, p.proname, pg_catalog.min(p.prokind::text), pg_catalog.min(pg_catalog.pg_get_function_identity_arguments(p.oid)) \
+        "SELECT n.nspname, p.proname, pg_catalog.min(p.prokind::text), pg_catalog.min(pg_catalog.pg_get_function_identity_arguments(p.oid)), pg_catalog.count(*) \
          FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
          WHERE n.nspname !~ '^pg_toast' GROUP BY 1, 2 ORDER BY 1, 2 LIMIT 20000",
     )
     .await;
     let functions: Vec<Value> =
-        funcs.iter().map(|r| json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "args": s(r, 3)})).collect();
+        funcs.iter().map(|r| json!({"schema": s(r, 0), "name": s(r, 1), "kind": s(r, 2), "args": s(r, 3), "overloads": s(r, 4).parse::<u32>().unwrap_or(1)})).collect();
     let search_path: Vec<String> =
         q(c, "SELECT pg_catalog.unnest(pg_catalog.current_schemas(true))").await.iter().map(|r| s(r, 0)).collect();
     let schemas: Vec<String> =
@@ -1215,6 +1244,7 @@ async fn load_meta(c: &mut Conn) -> Value {
         q(c, "SELECT word, catcode FROM pg_catalog.pg_get_keywords() ORDER BY 1").await.iter().map(|r| json!([s(r, 0), s(r, 1)])).collect();
     json!({
         "relations": relations,
+        "foreign_keys": foreign_keys,
         "functions": functions,
         "search_path": search_path,
         "schemas": schemas,
@@ -1238,5 +1268,40 @@ mod tests {
         assert_eq!(parse_copy("(select 1 from t) TO stdout"), Some(("(select 1 from t)".into(), "to".into(), "stdout".into(), "".into())));
         assert_eq!(parse_copy("t(a, b) from data.csv csv"), Some(("t(a, b)".into(), "from".into(), "data.csv".into(), "csv".into())));
         assert_eq!(parse_copy("nothing"), None);
+    }
+}
+
+/// Tests against a live server; set PGC_TEST_CONNINFO to run them.
+#[cfg(test)]
+mod db_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn meta_has_keys_and_comments() {
+        let Ok(ci) = std::env::var("PGC_TEST_CONNINFO") else { return };
+        let r = conninfo::resolve(&conninfo::parse(&ci).unwrap()).unwrap();
+        let mut c = Conn::connect(&r, None).await.expect("connect");
+        // Temporary schemas are left out of the metadata, so use a scratch schema.
+        c.query(
+            "DROP SCHEMA IF EXISTS pgc_meta_test CASCADE; CREATE SCHEMA pgc_meta_test; SET search_path = pgc_meta_test; \
+             CREATE TABLE pgc_m_a (id int PRIMARY KEY, \"odd name\" text NOT NULL DEFAULT 'x'); \
+             COMMENT ON COLUMN pgc_m_a.\"odd name\" IS 'a comment'; \
+             CREATE TABLE pgc_m_b (a_id int REFERENCES pgc_m_a, x int, y int, UNIQUE (x, y)); \
+             CREATE TABLE pgc_m_c (x int, y int, FOREIGN KEY (y, x) REFERENCES pgc_m_b (y, x))",
+        )
+        .await
+        .unwrap();
+        let meta = load_meta(&mut c).await;
+        c.query("DROP SCHEMA pgc_meta_test CASCADE").await.unwrap();
+        let rel = |name: &str| meta["relations"].as_array().unwrap().iter().find(|r| r["name"] == name).cloned().unwrap();
+        assert_eq!(rel("pgc_m_a")["columns"], json!([["id", "integer", "np", null], ["odd name", "text", "nd", "a comment"]]));
+        let fks: Vec<&Value> =
+            meta["foreign_keys"].as_array().unwrap().iter().filter(|f| f[1].as_str().unwrap().starts_with("pgc_m_")).collect();
+        assert_eq!(fks.len(), 2);
+        assert_eq!(
+            (&fks[0][1], &fks[0][2], &fks[0][4], &fks[0][5]),
+            (&json!("pgc_m_b"), &json!(["a_id"]), &json!("pgc_m_a"), &json!(["id"]))
+        );
+        assert_eq!((&fks[1][2], &fks[1][5]), (&json!(["y", "x"]), &json!(["y", "x"])));
     }
 }

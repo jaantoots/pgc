@@ -7,7 +7,9 @@ import { Compartment, EditorState, Prec, type Extension } from '@codemirror/stat
 import { EditorView, type KeyBinding, keymap, placeholder as placeholderExt, drawSelection, runScopeHandlers, ViewPlugin } from '@codemirror/view';
 import { classHighlighter } from '@lezer/highlight';
 import { getCM, Vim, vim } from '@replit/codemirror-vim';
-import { type Catalog, pgCompletion } from './completion';
+import type { Catalog } from './catalog';
+import { pgCompletion } from './completion';
+import { pgHover } from './hover';
 import { metaBindings, metaKeyName } from './metakeys';
 import { onPrefs, type Prefs, prefs } from './prefs';
 import { isComplete } from './sqlscan';
@@ -207,6 +209,7 @@ export function createEditor(o: EditorOptions): EditorView {
     sqlLanguage,
     syntaxHighlighting(classHighlighter),
     autocompletion({ override: [pgCompletion(o.catalog)], activateOnTyping: true, maxRenderedOptions: 80, icons: false }),
+    pgHover(o.catalog),
     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap]),
     EditorView.lineWrapping,
     EditorState.tabSize.of(4),

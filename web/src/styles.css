@@ -818,6 +818,84 @@ pre {
   font-family: var(--mono);
   font-size: 12px;
 }
+/* schema cards: hover tooltips and the completion info panel */
+.cm-tooltip-hover {
+  max-width: min(560px, 90vw);
+}
+.pgc-schema {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 6px 9px;
+  max-height: 340px;
+  overflow: auto;
+}
+.cm-completionInfo .pgc-schema {
+  padding: 0;
+  max-width: 420px;
+}
+.pgc-schema-head {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.pgc-schema-kind {
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 11px;
+}
+.pgc-schema-name {
+  font-weight: 600;
+}
+.pgc-schema-type {
+  color: var(--tok-type);
+}
+.pgc-schema-comment {
+  color: var(--muted);
+  font-family: var(--sans);
+  margin-top: 2px;
+  white-space: pre-wrap;
+}
+.pgc-schema-cols {
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+.pgc-schema-cols td {
+  padding: 0 1.2em 0 0;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.pgc-schema-cols tr[title] .pgc-schema-col {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 2px;
+}
+.pgc-schema-note,
+.pgc-schema-more,
+.pgc-schema-refs {
+  color: var(--muted);
+}
+.pgc-schema-more,
+.pgc-schema-refs {
+  margin-top: 3px;
+  font-family: var(--sans);
+  font-size: 11px;
+}
+.pgc-schema-badge {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 0.5em;
+  vertical-align: 1px;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] .pgc-schema-badge {
+  color: inherit;
+  border-color: currentColor;
+}
 .cm-matchingBracket {
   background: var(--accent-bg);
   outline: 1px solid var(--accent);
