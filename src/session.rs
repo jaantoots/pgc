@@ -10,12 +10,13 @@ use postgres_protocol::message::backend::Message;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
+use ts_rs::TS;
 
 use crate::conninfo::{self, Params};
 use crate::describe::{self, Output};
 use crate::lexer::{self, Segment};
 use crate::pgwire::{self, CancelKey, Column, Conn, DbError, Error, Row, TxStatus};
-use crate::store::{ColumnOut, Entry, HistoryRow, Item, ResultData, RowsItem, Settings, Store, now_ms};
+use crate::store::{ColumnOut, Entry, EntryStatus, Expanded, HistoryRow, Item, ResultData, RowsItem, Settings, Store, now_ms};
 
 /// Rows sent inline with a result; the rest are fetched on demand.
 const INLINE_ROWS: usize = 200;
@@ -40,10 +41,22 @@ pub struct App {
     pub passwords: Mutex<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ConnStatus {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+    Error,
+    NeedPassword,
+}
+
+#[derive(Debug, Clone, Serialize, Default, TS)]
+#[ts(export)]
 pub struct ConnState {
-    /// disconnected | connecting | connected | error | need_password
-    pub status: String,
+    pub status: ConnStatus,
     pub conninfo: String,
     pub label: Option<String>,
     pub dbname: Option<String>,
@@ -123,7 +136,7 @@ impl App {
             cmd: tx,
             events,
             shared: Mutex::new(Shared {
-                conn: ConnState { status: "disconnected".into(), conninfo: row.conninfo.clone(), ..Default::default() },
+                conn: ConnState { status: ConnStatus::Disconnected, conninfo: row.conninfo.clone(), ..Default::default() },
                 cancel: None,
                 running: None,
                 meta: None,
@@ -223,7 +236,7 @@ impl Actor {
                             Ok(a) => self.async_message(a),
                             Err(e) => {
                                 self.conn = None;
-                                self.set_conn_status("disconnected", Some(format!("connection lost: {e}")));
+                                self.set_conn_status(ConnStatus::Disconnected, Some(format!("connection lost: {e}")));
                             }
                         }
                         continue;
@@ -249,7 +262,7 @@ impl Actor {
                                 }
                             }
                             Err(e) => {
-                                self.set_conn_status("error", Some(e.to_string()));
+                                self.set_conn_status(ConnStatus::Error, Some(e.to_string()));
                                 continue;
                             }
                         }
@@ -284,7 +297,7 @@ impl Actor {
         if unwatched && idle_tx && self.last_activity.elapsed() > IDLE_CLOSE {
             tracing::info!("closing idle connection of session {}", self.h.id);
             self.conn = None;
-            self.set_conn_status("disconnected", None);
+            self.set_conn_status(ConnStatus::Disconnected, None);
         }
     }
 
@@ -295,7 +308,7 @@ impl Actor {
         };
         // Shown as a lightweight system entry in the flow.
         let mut e = self.new_entry(String::new());
-        e.status = "ok".into();
+        e.status = EntryStatus::Ok;
         e.items.push(item);
         e.duration_ms = Some(0.0);
         let _ = self.app.store.ensure_session(&self.h.id, &conninfo::to_string(&self.params, false));
@@ -307,13 +320,13 @@ impl Actor {
         self.h.shared.lock().unwrap().conn.label.clone().unwrap_or_default()
     }
 
-    fn set_conn_status(&self, status: &str, error: Option<String>) {
+    fn set_conn_status(&self, status: ConnStatus, error: Option<String>) {
         let st = {
             let mut sh = self.h.shared.lock().unwrap();
-            sh.conn.status = status.into();
+            sh.conn.status = status;
             sh.conn.error = error;
             sh.conn.conninfo = conninfo::to_string(&self.params, false);
-            if status != "connected" {
+            if status != ConnStatus::Connected {
                 sh.conn.tx = None;
                 sh.cancel = None;
             }
@@ -328,7 +341,7 @@ impl Actor {
             let mut sh = self.h.shared.lock().unwrap();
             let i = &c.info;
             sh.conn = ConnState {
-                status: "connected".into(),
+                status: ConnStatus::Connected,
                 conninfo: conninfo::to_string(&self.params, false),
                 label: Some({
                     let target = if i.unix_socket {
@@ -364,11 +377,11 @@ impl Actor {
         let r = match r {
             Ok(r) => r,
             Err(e) => {
-                self.set_conn_status("error", Some(e.to_string()));
+                self.set_conn_status(ConnStatus::Error, Some(e.to_string()));
                 return Err(e);
             }
         };
-        self.set_conn_status("connecting", None);
+        self.set_conn_status(ConnStatus::Connecting, None);
         let pw = self.app.password_for(&r);
         match Conn::connect(&r, pw.as_deref()).await {
             Ok(c) => {
@@ -383,12 +396,13 @@ impl Actor {
                 Ok(())
             }
             Err(Error::NeedPassword) => {
-                self.set_conn_status("need_password", None);
+                self.set_conn_status(ConnStatus::NeedPassword, None);
                 Err(Error::NeedPassword)
             }
             Err(e) => {
                 // A wrong password: ask again rather than just failing.
-                let status = if e.to_string().contains("password authentication failed") { "need_password" } else { "error" };
+                let status =
+                    if e.to_string().contains("password authentication failed") { ConnStatus::NeedPassword } else { ConnStatus::Error };
                 self.set_conn_status(status, Some(e.to_string()));
                 Err(e)
             }
@@ -455,7 +469,7 @@ impl Actor {
             session_id: self.h.id.clone(),
             seq: self.app.store.next_seq(&self.h.id).unwrap_or(1),
             sql,
-            status: "running".into(),
+            status: EntryStatus::Running,
             started_at: now_ms(),
             duration_ms: None,
             items: vec![],
@@ -477,7 +491,7 @@ impl Actor {
                 let _ = self.app.store.delete_results_for_entry(&e.id);
                 e.sql = sql.clone();
                 e.items.clear();
-                e.status = "running".into();
+                e.status = EntryStatus::Running;
                 e.started_at = now_ms();
                 e.duration_ms = None;
                 e.runs += 1;
@@ -498,13 +512,13 @@ impl Actor {
             }
             let item = error_item(&e, None);
             self.push_item(&mut entry, item);
-            self.finish(entry, "error", started, Vec::new());
+            self.finish(entry, EntryStatus::Error, started, Vec::new());
             return;
         }
         entry.conn_label = self.conn_label();
 
         let mut work: VecDeque<Work> = lexer::split(&sql).into_iter().map(Work::Seg).collect();
-        let mut status = "ok";
+        let mut status = EntryStatus::Ok;
         let mut results: Vec<(String, Arc<ResultData>)> = Vec::new();
         let mut ddl = false;
         let mut depth = 0;
@@ -568,12 +582,12 @@ impl Actor {
             };
             if let Err(e) = res {
                 let cancelled = matches!(&e, Error::Db(d) if d.code == "57014");
-                status = if cancelled { "cancelled" } else { "error" };
+                status = if cancelled { EntryStatus::Cancelled } else { EntryStatus::Error };
                 if matches!(e, Error::Io(_)) {
                     // Lost the connection mid-query; it is re-established on the next run.
                     self.push_item(&mut entry, error_item(&e, None));
                     self.conn = None;
-                    self.set_conn_status("disconnected", Some(e.to_string()));
+                    self.set_conn_status(ConnStatus::Disconnected, Some(e.to_string()));
                 }
                 break;
             }
@@ -591,8 +605,8 @@ impl Actor {
         }
     }
 
-    fn finish(&self, mut entry: Entry, status: &str, started: Instant, results: Vec<(String, Arc<ResultData>)>) {
-        entry.status = status.into();
+    fn finish(&self, mut entry: Entry, status: EntryStatus, started: Instant, results: Vec<(String, Arc<ResultData>)>) {
+        entry.status = status;
         entry.duration_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
         for (id, data) in results {
             if let Err(e) = self.app.store.save_result(&id, &entry.id, data) {
@@ -610,7 +624,7 @@ impl Actor {
                 sql: entry.sql.clone(),
                 executed_at: entry.started_at,
                 duration_ms: entry.duration_ms,
-                status: entry.status.clone(),
+                status: entry.status.as_str().into(),
                 conn_label: entry.conn_label.clone(),
             });
         }
@@ -642,7 +656,7 @@ impl Actor {
         let data = Arc::new(ResultData { columns: cols.clone(), rows, row_count });
         self.app.store.cache.lock().unwrap().insert(id.clone(), data.clone());
         results.push((id.clone(), data));
-        let expanded = expanded || self.h.shared.lock().unwrap().settings.expanded == "on";
+        let expanded = expanded || self.h.shared.lock().unwrap().settings.expanded == Expanded::On;
         Item::Rows(RowsItem { result_id: id, columns: cols, rows: inline, row_count, stored, tag, title: None, footer: vec![], expanded })
     }
 
@@ -811,26 +825,26 @@ impl Actor {
             "x" => {
                 let mut s = self.h.shared.lock().unwrap().settings.clone();
                 s.expanded = match argv.first().map(String::as_str) {
-                    Some("on") => "on".into(),
-                    Some("off") => "off".into(),
-                    Some("auto") => "auto".into(),
+                    Some("on") => Expanded::On,
+                    Some("off") => Expanded::Off,
+                    Some("auto") => Expanded::Auto,
                     Some(o) => {
                         let e = Error::db(DbError::simple(format!("\\x: unrecognized value \"{o}\": Boolean expected")));
                         self.push_item(entry, error_item(&e, None));
                         return Err(e);
                     }
                     None => {
-                        if s.expanded == "on" {
-                            "off".into()
+                        if s.expanded == Expanded::On {
+                            Expanded::Off
                         } else {
-                            "on".into()
+                            Expanded::On
                         }
                     }
                 };
-                let msg = match s.expanded.as_str() {
-                    "on" => "Expanded display is on.",
-                    "auto" => "Expanded display is used automatically.",
-                    _ => "Expanded display is off.",
+                let msg = match s.expanded {
+                    Expanded::On => "Expanded display is on.",
+                    Expanded::Auto => "Expanded display is used automatically.",
+                    Expanded::Off => "Expanded display is off.",
                 };
                 let _ = self.app.store.save_settings(&self.h.id, &s);
                 self.h.shared.lock().unwrap().settings = s.clone();

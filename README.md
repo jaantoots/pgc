@@ -184,7 +184,8 @@ checked to defeat DNS rebinding and cross-site requests.
 ```sh
 make dev     # pgc on :8765 + Vite on :5173 with hot reload
 make test    # Rust and TypeScript unit tests
-make check   # fmt, clippy, typecheck
+make check   # fmt, clippy, typecheck, generated TS types up to date
+make bindings   # regenerate web/src/bindings from the Rust types (ts-rs)
 PGC_TEST_CONNINFO="dbname=postgres" cargo test   # also run tests against a live server
 make screenshots   # regenerate docs/screenshots
 ```

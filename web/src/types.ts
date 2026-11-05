@@ -1,110 +1,28 @@
+// Types shared with the backend are generated from the Rust definitions by
+// ts-rs into ./bindings (`make bindings`); the rest are built ad hoc with json!.
+import type { Item } from './bindings/Item';
+import type { SessionRow } from './bindings/SessionRow';
+
+export type { ClientMsg } from './bindings/ClientMsg';
+export type { Column } from './bindings/Column';
+export type { ConnState } from './bindings/ConnState';
+export type { ConnStatus } from './bindings/ConnStatus';
+export type { DbError } from './bindings/DbError';
+export type { Entry } from './bindings/Entry';
+export type { EntryStatus } from './bindings/EntryStatus';
+export type { Expanded } from './bindings/Expanded';
+export type { HistoryRow } from './bindings/HistoryRow';
+export type { Item } from './bindings/Item';
+export type { Settings } from './bindings/Settings';
+export type { TxStatus } from './bindings/TxStatus';
+
 export type Cell = string | null;
 export type Row = Cell[];
 
-export interface Column {
-  name: string;
-  type_oid: number;
-  type_name: string;
-  numeric: boolean;
-}
+export type RowsItem = Extract<Item, { kind: 'rows' }>;
 
-export interface DbError {
-  severity: string;
-  code: string;
-  message: string;
-  detail?: string;
-  hint?: string;
-  position?: number;
-  internal_position?: number;
-  internal_query?: string;
-  where?: string;
-  schema?: string;
-  table?: string;
-  column?: string;
-  constraint?: string;
-}
-
-export interface RowsItem {
-  kind: 'rows';
-  result_id: string;
-  columns: Column[];
-  rows: Row[];
-  row_count: number;
-  stored: number;
-  tag?: string;
-  title?: string;
-  footer?: string[];
-  expanded: boolean;
-}
-
-export type Item =
-  | RowsItem
-  | { kind: 'command'; tag: string }
-  | { kind: 'notice'; notice: DbError }
-  | { kind: 'error'; error: DbError; offset?: number }
-  | { kind: 'text'; text: string }
-  | { kind: 'notification'; pid: number; channel: string; payload: string };
-
-export interface Entry {
-  id: string;
-  session_id: string;
-  seq: number;
-  sql: string;
-  status: 'running' | 'ok' | 'error' | 'cancelled' | 'interrupted';
-  started_at: number;
-  duration_ms: number | null;
-  items: Item[];
-  conn_label: string;
-  runs: number;
-}
-
-export type TxStatus = 'idle' | 'transaction' | 'failed';
-
-export interface ConnState {
-  status: 'disconnected' | 'connecting' | 'connected' | 'error' | 'need_password';
-  conninfo: string;
-  label: string | null;
-  dbname: string | null;
-  user: string | null;
-  host: string | null;
-  port: number | null;
-  unix_socket: boolean;
-  tls: string | null;
-  server_version: string | null;
-  tx: TxStatus | null;
-  superuser: boolean;
-  pid: number | null;
-  error: string | null;
-}
-
-export interface Settings {
-  expanded: 'on' | 'off' | 'auto';
-}
-
-export interface SessionInfo {
-  id: string;
-  name: string | null;
-  conninfo: string;
-  conn_label: string | null;
-  created_at: number;
-  updated_at: number;
-  settings: Settings;
-  entry_count: number;
-  last_sql: string | null;
-  active?: boolean;
-  viewers?: number;
-}
-
-export interface HistoryRow {
-  id: number;
-  session_id: string;
-  entry_id: string | null;
-  sql: string;
-  executed_at: number;
-  duration_ms: number | null;
-  status: string;
-  conn_label: string;
-}
+/** A saved session as listed by /api/sessions, with whether it is open and by how many tabs. */
+export type SessionInfo = SessionRow & { active?: boolean; viewers?: number };
 
 /** [name, type, flags, comment]; flags: n = not null, p = primary key, d = has a default. */
 export type ColumnInfo = [string, string, string?, (string | null)?];

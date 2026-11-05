@@ -16,6 +16,7 @@ use rust_embed::RustEmbed;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
+use ts_rs::TS;
 
 use crate::conninfo;
 use crate::session::{App, Cmd};
@@ -307,14 +308,26 @@ async fn ws_handler(State(ctx): State<Ctx>, Path(id): Path<String>, ws: WebSocke
     ws.max_message_size(64 << 20).on_upgrade(move |socket| handle_socket(socket, ctx, id))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[ts(export)]
 enum ClientMsg {
-    Run { sql: String, entry_id: Option<String> },
+    Run {
+        sql: String,
+        #[ts(optional)]
+        entry_id: Option<String>,
+    },
     Cancel,
-    Password { password: String },
-    Connect { conninfo: Option<String> },
-    Settings { settings: Settings },
+    Password {
+        password: String,
+    },
+    Connect {
+        #[ts(optional)]
+        conninfo: Option<String>,
+    },
+    Settings {
+        settings: Settings,
+    },
     RefreshMeta,
 }
 
