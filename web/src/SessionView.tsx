@@ -2,12 +2,12 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import { createStore } from 'solid-js/store';
 import type { EditorView } from '@codemirror/view';
 import { api } from './api';
-import { createEditor, setDoc } from './editor';
+import { createEditor, formatSql, setDoc } from './editor';
 import EntryView, { isBig } from './EntryView';
 import { relTime } from './format';
 import { createSession } from './session';
 import type { SessionInfo } from './types';
-import { prefs, setPrefs } from './prefs';
+import { type FormatCase, type FormatLayout, prefs, setPrefs } from './prefs';
 import { ContextMenu, isMac, Modal, modKey, openMenu, toast, Toasts } from './ui';
 
 export default function SessionView(props: { id: string }) {
@@ -223,20 +223,34 @@ export default function SessionView(props: { id: string }) {
         </label>
         <button
           class="btn ghost"
-          title="Editor keybindings"
+          title="Keybindings and formatting"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
+            const p = prefs();
+            const check = (on: boolean) => (on ? '✓' : '');
+            const layouts: [FormatLayout, string][] = [
+              ['indented', 'Indented'],
+              ['aligned-left', 'Aligned keywords'],
+              ['aligned-right', 'Right-aligned keywords'],
+            ];
+            const cases: [FormatCase, string][] = [
+              ['preserve', 'Keywords as typed'],
+              ['upper', 'UPPERCASE keywords'],
+              ['lower', 'lowercase keywords'],
+            ];
             openMenu(new MouseEvent('click', { clientX: r.left, clientY: r.bottom + 4 }), [
-              { label: 'Vim mode', hint: prefs().vim ? '✓' : '', action: () => setPrefs({ vim: !prefs().vim }) },
-              {
-                label: isMac ? 'Option as Meta' : 'Alt as Meta',
-                hint: prefs().altMeta ? '✓' : '',
-                action: () => setPrefs({ altMeta: !prefs().altMeta }),
-              },
+              { label: 'Vim mode', hint: check(p.vim), action: () => setPrefs({ vim: !p.vim }) },
+              { label: isMac ? 'Option as Meta' : 'Alt as Meta', hint: check(p.altMeta), action: () => setPrefs({ altMeta: !p.altMeta }) },
+              { label: '', separator: true },
+              { label: 'Format SQL', hint: `${modKey}${isMac ? '⇧' : 'Shift+'}F`, action: () => view && void formatSql(view).then(() => view?.focus()) },
+              { label: '', separator: true },
+              ...layouts.map(([v, label]) => ({ label, hint: check(p.formatLayout === v), action: () => setPrefs({ formatLayout: v }) })),
+              { label: '', separator: true },
+              ...cases.map(([v, label]) => ({ label, hint: check(p.formatCase === v), action: () => setPrefs({ formatCase: v }) })),
             ]);
           }}
         >
-          Keys
+          Editor
         </button>
         <button class="btn ghost" onClick={() => setShowHistory(true)} title={`Search history (${modKey}R)`}>
           History
