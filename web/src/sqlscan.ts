@@ -2,7 +2,7 @@
 // Enter should run the buffer, to find statement boundaries, and to tokenize
 // the current statement for completions.
 
-export type TokKind = 'word' | 'quoted' | 'string' | 'number' | 'punct' | 'op' | 'meta' | 'param';
+export type TokKind = 'word' | 'quoted' | 'string' | 'number' | 'punct' | 'op' | 'meta' | 'param' | 'comment';
 
 export interface Token {
   kind: TokKind;
@@ -24,7 +24,8 @@ export interface Scan {
 const isIdentStart = (c: string) => /[\p{L}_]/u.test(c);
 const isIdent = (c: string) => /[\p{L}\p{N}_$]/u.test(c);
 
-export function scan(text: string): Scan {
+/** With `comments`, comments are returned as tokens too; by default they are skipped. */
+export function scan(text: string, opts: { comments?: boolean } = {}): Scan {
   const tokens: Token[] = [];
   const boundaries: number[] = [];
   let depth = 0;
@@ -40,11 +41,13 @@ export function scan(text: string): Scan {
     const c = text[i];
     const next = text[i + 1];
     if (c === '-' && next === '-') {
+      const s = i;
       const e = text.indexOf('\n', i);
       if (e < 0) {
         openAt = i;
         i = n;
       } else i = e;
+      if (opts.comments) tokens.push({ kind: 'comment', text: text.slice(s, i), start: s, end: i });
       continue;
     }
     if (c === '/' && next === '*') {
@@ -61,6 +64,7 @@ export function scan(text: string): Scan {
         } else i++;
       }
       if (d > 0) openAt = s;
+      if (opts.comments) tokens.push({ kind: 'comment', text: text.slice(s, i), start: s, end: i });
       continue;
     }
     if (c === "'") {

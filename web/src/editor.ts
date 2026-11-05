@@ -13,6 +13,7 @@ import { pgHover } from './hover';
 import { metaBindings, metaKeyName } from './metakeys';
 import { onPrefs, type Prefs, prefs } from './prefs';
 import { isComplete } from './sqlscan';
+import { toast } from './ui';
 
 export interface EditorOptions {
   parent: HTMLElement;
@@ -82,6 +83,32 @@ Vim.defineEx('write', 'w', (cm: { cm6?: EditorView }) => {
   if (o && text.trim()) o.onRun(text);
 });
 Vim.defineEx('quit', 'q', (cm: { cm6?: EditorView }) => void exOptions(cm)?.onEscape?.());
+
+// ---- Format SQL ----
+
+/** Format the selection, or the whole buffer. The formatter is loaded on first use. */
+export async function formatSql(view: EditorView): Promise<void> {
+  const { formatSql: format, mapPosition } = await import('./sqlformat');
+  const state = view.state;
+  const sel = state.selection.main;
+  const [from, to] = sel.empty ? [0, state.doc.length] : [sel.from, sel.to];
+  const src = state.sliceDoc(from, to);
+  if (!src.trim()) return;
+  const p = prefs();
+  const r = format(src, { layout: p.formatLayout, keywordCase: p.formatCase });
+  if ('error' in r) {
+    toast(`Can't format: ${r.error}`, 'error');
+    return;
+  }
+  // The buffer changed while the formatter loaded: don't overwrite the edit.
+  if (view.state.doc !== state.doc || r.text === src) return;
+  view.dispatch({
+    changes: { from, to, insert: r.text },
+    selection: sel.empty ? { anchor: mapPosition(src, r.text, sel.head) } : { anchor: from, head: from + r.text.length },
+    userEvent: 'input.format',
+    scrollIntoView: true,
+  });
+}
 
 // ---- Alt/Option as Meta ----
 
@@ -168,6 +195,7 @@ export function createEditor(o: EditorOptions): EditorView {
       },
     },
     { key: 'Ctrl-Space', run: startCompletion },
+    { key: 'Mod-Shift-f', run: (view) => (void formatSql(view), true) },
     {
       // Tab completes like in a shell: accept the selected suggestion, or open the list.
       key: 'Tab',

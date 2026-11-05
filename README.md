@@ -35,6 +35,11 @@ come back to.
   linked by a foreign key, ready-made with an alias and the `ON` condition;
   after `ON` (or `WHERE` in a correlated subquery), the join conditions. `Tab`
   right after `*` expands it to the column list.
+- **Format SQL** on demand (`Ctrl/⌘+Shift+F`) for when a query has grown
+  past one line: the selection or the whole buffer, in the layout and keyword
+  case you pick, since SQL has no one standard style. Backslash commands are
+  left alone, and a result that would change anything but whitespace and
+  keyword case is refused.
 - **Hover for the schema.** Hover a table, alias, column, CTE or function for
   its columns and types, primary and foreign keys, and comments. The same card
   shows next to table and column completions.
@@ -111,9 +116,10 @@ the UI prompts for it; it's kept in memory only.
 | `Esc` or `Ctrl+C` while running | cancel the query |
 | `Ctrl/⌘+O` | switch session |
 | `Tab` / `Ctrl+Space` | accept the highlighted completion, or open the list |
+| `Ctrl/⌘+Shift+F` | format the selection, or the whole buffer |
 | In a grid: arrows, `Shift`+arrows, `Ctrl/⌘+A`, `Ctrl/⌘+C`, `Ctrl/⌘+Shift+C`, `Enter` | move, extend, select all, copy, copy with headers, view value |
 
-**Keys** in the header toggles two editor options, remembered per browser:
+**Editor** in the header holds the editor options, remembered per browser:
 
 - **Alt as Meta** (macOS: **Option as Meta**) — readline's Meta bindings:
   `M-b`/`M-f` word back/forward (`M-B`/`M-F` select), `M-d` and
@@ -124,6 +130,13 @@ the UI prompts for it; it's kept in memory only.
   `Enter` runs a complete statement from normal mode too, `k`/`j` walk the
   history from the first/last line, `:w` runs the buffer, and `Esc` in normal
   mode cancels a running query or closes an inline edit (`:q` too).
+- **Format style.** *Indented* puts each clause keyword on its own line with
+  its body indented under it; *Aligned keywords* and *Right-aligned keywords*
+  put the clause keywords in a column with the body next to them (right-aligned
+  is the "river" style). Keywords can be kept as typed, uppercased or
+  lowercased. The formatter is
+  [sql-formatter](https://github.com/sql-formatter-org/sql-formatter)'s
+  PostgreSQL dialect, loaded on first use.
 
 ### Backslash commands
 
@@ -188,4 +201,4 @@ statement splitting), `src/describe.rs` (backslash commands),
 `src/session.rs` (session actor), `src/store.rs` (SQLite), `src/server.rs`
 (HTTP/WebSocket). Frontend in `web/src`: `SessionView.tsx` (page),
 `EntryView.tsx` (entries and results), `ResultGrid.tsx` (grid),
-`completion.ts`, `editor.ts`, `sqlscan.ts`.
+`completion.ts`, `editor.ts`, `sqlscan.ts`, `sqlformat.ts`.
