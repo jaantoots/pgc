@@ -22,6 +22,29 @@ function cpToIndex(s: string, cp: number): number {
   return s.length;
 }
 
+/**
+ * psql-style footer lines (\d's indexes, constraints, …). Each line keeps its
+ * leading spaces, so copying gives psql's text, and wraps with a hanging indent
+ * past them, so a wrapped definition stays visibly part of its entry instead of
+ * continuing at column 0 like a section heading.
+ */
+function ResultFooter(props: { lines: string[] }) {
+  return (
+    <pre class="result-footer">
+      <For each={props.lines}>
+        {(line) => {
+          const indent = line.length - line.trimStart().length;
+          return (
+            <span classList={{ 'footer-line': true, 'footer-head': indent === 0 && line.endsWith(':') }} style={{ '--indent': indent }}>
+              {line}
+            </span>
+          );
+        }}
+      </For>
+    </pre>
+  );
+}
+
 export function errorMark(entry: Entry): number | undefined {
   for (const it of entry.items) {
     if (it.kind === 'error' && it.offset !== undefined && it.offset < 1e15 && it.error.position) {
@@ -351,7 +374,7 @@ function ResultCard(props: { item: RowsItem; entry: Entry; session: Session; lat
         </Show>
       </Show>
       <Show when={it().footer?.length}>
-        <pre class="result-footer">{it().footer!.join('\n')}</pre>
+        <ResultFooter lines={it().footer!} />
       </Show>
       <Show when={data().missing()}>
         <div class="muted small">Only the first {data().stored.toLocaleString()} rows were saved with the session; re-run for the full result.</div>

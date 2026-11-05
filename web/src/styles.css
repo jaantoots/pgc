@@ -505,7 +505,21 @@ pre {
 .result-footer {
   color: var(--fg);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding-top: 2px;
+}
+/* Hanging indent: wrapped text continues 4 columns past the line's own indent
+   (its leading spaces are kept in the text, so they make up the first line's). */
+.footer-line {
+  display: block;
+  padding-left: calc((var(--indent) + 4) * 1ch);
+  text-indent: calc((var(--indent) + 4) * -1ch);
+}
+.footer-line:empty::after {
+  content: ' ';
+}
+.footer-head {
+  font-weight: 600;
 }
 
 .grid {
